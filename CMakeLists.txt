@@ -297,15 +297,19 @@ if (MSVC AND MSVC_VERSION LESS 1920)
   message (SEND_ERROR "pbrt-v4 currently requires MSVC 2019 to build on Windows. PRs that get MSVC 2017 working as well would be welcomed. :-)")
 endif ()
 
-if (MSVC AND NOT PBRT_CUDA_ENABLED)
-  # FIXME: it would be nice to still pipe these through to MSVC in this case.
-  list (APPEND PBRT_CXX_FLAGS /wd4305) # double constant assigned to float
-  list (APPEND PBRT_CXX_FLAGS /wd4244) # int -> float conversion
-  list (APPEND PBRT_CXX_FLAGS /wd4843) # double -> float conversion
-  list (APPEND PBRT_CXX_FLAGS /wd4267) # size_t -> int conversion
-  list (APPEND PBRT_CXX_FLAGS /wd4838) # double -> int conversion
-  list (APPEND PBRT_CXX_FLAGS /wd26495) # uninitialized member variable
-  list (APPEND PBRT_CXX_FLAGS /wd26451) # arithmetic on 4-byte value, then cast to 8-byte
+if (MSVC)
+  if (NOT PBRT_CUDA_ENABLED)
+    # FIXME: it would be nice to still pipe these through to MSVC in this case.
+    list (APPEND PBRT_CXX_FLAGS /wd4305) # double constant assigned to float
+    list (APPEND PBRT_CXX_FLAGS /wd4244) # int -> float conversion
+    list (APPEND PBRT_CXX_FLAGS /wd4843) # double -> float conversion
+    list (APPEND PBRT_CXX_FLAGS /wd4267) # size_t -> int conversion
+    list (APPEND PBRT_CXX_FLAGS /wd4838) # double -> int conversion
+    list (APPEND PBRT_CXX_FLAGS /wd26495) # uninitialized member variable
+    list (APPEND PBRT_CXX_FLAGS /wd26451) # arithmetic on 4-byte value, then cast to 8-byte
+  else()
+    add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/wd4305 /wd4018 /wd4244 /wd4843 /wd4267 /wd4552 /wd4838 /wd26495 /wd26451>")
+  endif()
 endif ()
 
 ###########################################################################
