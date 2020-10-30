@@ -1366,7 +1366,7 @@ int main(int argc, char *argv[]) {
             if (mtl.diffuse[0] != 0 || mtl.diffuse[1] != 0 || mtl.diffuse[2] != 0) {
                 fprintf(f,
                         "Texture \"%s-kd-img\" \"spectrum\" \"imagemap\" "
-                        "\"string imagefile\" [\"%s\"]\n",
+                        "\"string filename\" [\"%s\"]\n",
                         mtl.name.c_str(), mtl.diffuse_texname.c_str());
                 float scale = (mtl.diffuse[0] + mtl.diffuse[1] + mtl.diffuse[2]) / 3;
                 if (mtl.diffuse[0] != mtl.diffuse[1] || mtl.diffuse[1] != mtl.diffuse[2])
@@ -1382,7 +1382,7 @@ int main(int argc, char *argv[]) {
             } else {
                 fprintf(f,
                         "Texture \"%s-kd\" \"spectrum\" \"imagemap\" "
-                        "\"string imagefile\" [\"%s\"]\n",
+                        "\"string filename\" [\"%s\"]\n",
                         mtl.name.c_str(), mtl.diffuse_texname.c_str());
             }
         }
@@ -1392,7 +1392,7 @@ int main(int argc, char *argv[]) {
             if (mtl.specular[0] != 0 || mtl.specular[1] != 0 || mtl.specular[2] != 0) {
                 fprintf(f,
                         "Texture \"%s-ks-img\" \"spectrum\" \"imagemap\" "
-                        "\"string imagefile\" [\"%s\"]\n",
+                        "\"string filename\" [\"%s\"]\n",
                         mtl.name.c_str(), mtl.specular_texname.c_str());
                 float scale = (mtl.specular[0] + mtl.specular[1] + mtl.specular[2]) / 3;
                 if (mtl.specular[0] != mtl.specular[1] ||
@@ -1409,7 +1409,7 @@ int main(int argc, char *argv[]) {
             } else {
                 fprintf(f,
                         "Texture \"%s-ks\" \"spectrum\" \"imagemap\" "
-                        "\"string imagefile\" [\"%s\"]\n",
+                        "\"string filename\" [\"%s\"]\n",
                         mtl.name.c_str(), mtl.specular_texname.c_str());
             }
         }
@@ -1417,31 +1417,37 @@ int main(int argc, char *argv[]) {
         if (!mtl.bump_texname.empty()) {
             fprintf(f,
                     "Texture \"%s-bump\" \"float\" \"imagemap\" "
-                    "\"string imagefile\" [\"%s\"]\n",
+                    "\"string filename\" [\"%s\"]\n",
                     mtl.name.c_str(), mtl.bump_texname.c_str());
         }
-
+        // In the previous version, the 'Uber' material could cover some types
+        // of OBJ defined materials, if we now change to a fixed type, we can
+        // lose few of the original properties from the exported material.
+        // The idea is to be able to define a few types of materials based on
+        // the properties of the exported material i.e .:
+        //     diffusse: if the material does not have specular or transparency properties.
+        //     dielectric: follow the same criteria..  
         float roughness = (mtl.shininess == 0) ? 0. : (1.f / mtl.shininess);
-        fprintf(f, R"(MakeNamedMaterial "%s" "string type" "uber" )", mtl.name.c_str());
+        fprintf(f, R"(MakeNamedMaterial "%s" "string type" "diffuse" )", mtl.name.c_str());
 
         if (hasDiffuseTex)
             fprintf(f, R"("texture reflectance" "%s-kd" )", mtl.name.c_str());
         else
             fprintf(f, "\"rgb reflectance\" [%f %f %f] ", mtl.diffuse[0], mtl.diffuse[1],
                     mtl.diffuse[2]);
-        if (hasSpecularTex)
-            fprintf(f, R"("texture Ks" "%s-ks" )", mtl.name.c_str());
-        else
-            fprintf(f, "\"rgb Ks\" [%f %f %f] ", mtl.specular[0], mtl.specular[1],
-                    mtl.specular[2]);
+        //if (hasSpecularTex)
+        //    fprintf(f, R"("texture Ks" "%s-ks" )", mtl.name.c_str());
+        //else
+        //    fprintf(f, "\"rgb Ks\" [%f %f %f] ", mtl.specular[0], mtl.specular[1],
+        //            mtl.specular[2]);
         if (mtl.dissolve < 1)
             fprintf(stderr, "Warning: ignoring opacity for \"%s\" material/\n",
                     mtl.name.c_str());
-        fprintf(f,
-                "\"float roughness\" [%f] "
-                "\"rgb Kt\" [%f %f %f] \"float eta\" [%f] ",
-                roughness, mtl.transmittance[0], mtl.transmittance[1],
-                mtl.transmittance[2], mtl.ior);
+        //fprintf(f,
+        //        "\"float roughness\" [%f] "
+        //        "\"rgb Kt\" [%f %f %f] \"float eta\" [%f] ",
+        //        roughness, mtl.transmittance[0], mtl.transmittance[1],
+        //        mtl.transmittance[2], mtl.ior);
         if (!mtl.bump_texname.empty())
             fprintf(f, R"("texture displacement" "%s-bump" )", mtl.name.c_str());
         fprintf(f, "\n\n");
