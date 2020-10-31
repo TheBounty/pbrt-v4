@@ -979,15 +979,15 @@ STAT_COUNTER("Integrator/Surface interactions", surfaceInteractions);
 // VolPathIntegrator Method Definitions
 SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
                                       SamplerHandle sampler, ScratchBuffer &scratchBuffer,
-                                      VisibleSurface *visibleSurface) const {
+                                      VisibleSurface *) const {
     // Declare state variables for volumetric path
-    // NOTE: beta means something different here...
-    SampledSpectrum L(0.f), beta(1.f), pdfUni(1.f), pdfNEE(1.f);
+    SampledSpectrum L(0.f), beta(1.f), pdfUni(1.f), pdfLight(1.f);
     bool specularBounce = false, anyNonSpecularBounces = false;
-    Float etaScale = 1;
-    pstd::optional<SurfaceInteraction> prevSurfaceIntr;
-    pstd::optional<MediumInteraction> prevMediumIntr;
     int depth = 0;
+
+    LightSampleContext prevIntrContext;
+
+    Float etaScale = 1;
 
     while (true) {
         // Sample segment of volumetric scattering path
@@ -1007,12 +1007,14 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
                         terminated = true;
                         return false;
                     }
-                    rescale(beta, pdfUni, pdfNEE);
                     ++volumeInteractions;
                     const MediumInteraction &intr = mediumSample.intr;
                     const SampledSpectrum &sigma_a = intr.sigma_a,
                                           &sigma_s = intr.sigma_s;
                     const SampledSpectrum &Tmaj = mediumSample.Tmaj;
+                    // Rescale path throughput and PDFs if necessary
+                    Rescale(beta, pdfUni, pdfLight);
+
                     // Add emission from medium scattering event
                     if (depth < maxDepth)
                         L += SafeDiv(
@@ -1057,10 +1059,9 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
                         }
                         // Update ray path state for indirect volume scattering
                         beta *= ps->p;
-                        pdfNEE = pdfUni;
+                        pdfLight = pdfUni;
                         pdfUni *= ps->pdf;
-                        prevMediumIntr = intr;
-                        prevSurfaceIntr.reset();
+                        prevIntrContext = LightSampleContext(intr);
                         scattered = true;
                         ray = intr.SpawnRay(ps->wi);
                         specularBounce = false;
@@ -1073,14 +1074,16 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
                         SampledSpectrum sigma_n = intr.sigma_n();
                         beta *= Tmaj * sigma_n;
                         pdfUni *= Tmaj * sigma_n;
-                        pdfNEE *= Tmaj * intr.sigma_maj;
-                        rescale(beta, pdfUni, pdfNEE);
+                        pdfLight *= Tmaj * intr.sigma_maj;
+                        Rescale(beta, pdfUni, pdfLight);
                         return true;
                     }
                 });
+            // Update _beta_ and _pdfUni_ for unscattered rays using _Tmaj_
             if (!scattered && !terminated) {
                 beta *= Tmaj;
                 pdfUni *= Tmaj;
+                pdfLight *= Tmaj;
             }
         }
         if (terminated)
@@ -1089,8 +1092,6 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             continue;
         // Handle scattering at point on surface for volumetric path tracer
         ++surfaceInteractions;
-        if (depth > 0)
-            CHECK(prevSurfaceIntr.has_value() ^ prevMediumIntr.has_value());
         // Add emitted light at volume path vertex or from the environment
         if (!si) {
             // Accumulate contributions from infinite light sources
@@ -1101,17 +1102,12 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
                         L += SafeDiv(beta * Le, pdfUni.Average() * lambda.PDF());
                     else {
                         // Add infinite light contribution using both PDFs with MIS
-                        LightSampleContext prevIntrContext;
-                        if (prevSurfaceIntr)
-                            prevIntrContext = LightSampleContext(*prevSurfaceIntr);
-                        else
-                            prevIntrContext = LightSampleContext(*prevMediumIntr);
                         Float lightPDF = lightSampler.PDF(prevIntrContext, light) *
                                          light.PDF_Li(prevIntrContext, ray.d,
                                                       LightSamplingMode::WithMIS);
-                        pdfNEE *= lightPDF;
+                        pdfLight *= lightPDF;
                         L += SafeDiv(beta * Le,
-                                     (pdfUni + pdfNEE).Average() * lambda.PDF());
+                                     (pdfUni + pdfLight).Average() * lambda.PDF());
                     }
                 }
             }
@@ -1127,16 +1123,11 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             else {
                 // Add surface light contribution using both PDFs with MIS
                 LightHandle areaLight(isect.areaLight);
-                LightSampleContext prevIntrContext;
-                if (prevSurfaceIntr)
-                    prevIntrContext = LightSampleContext(*prevSurfaceIntr);
-                else
-                    prevIntrContext = LightSampleContext(*prevMediumIntr);
                 Float lightPDF =
                     lightSampler.PDF(prevIntrContext, areaLight) *
                     areaLight.PDF_Li(prevIntrContext, ray.d, LightSamplingMode::WithMIS);
-                pdfNEE *= lightPDF;
-                L += SafeDiv(beta * Le, (pdfUni + pdfNEE).Average() * lambda.PDF());
+                pdfLight *= lightPDF;
+                L += SafeDiv(beta * Le, (pdfUni + pdfLight).Average() * lambda.PDF());
             }
         }
 
@@ -1147,8 +1138,7 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             continue;
         }
 
-        prevSurfaceIntr = isect;
-        prevMediumIntr.reset();
+        prevIntrContext = LightSampleContext(isect);
         // Terminate path if maximum depth reached
         if (depth++ >= maxDepth)
             return L;
@@ -1175,14 +1165,14 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             break;
         // Update _beta_ and PDFs for BSDF scattering
         beta *= bs->f * AbsDot(bs->wi, isect.shading.n);
-        pdfNEE = pdfUni;
+        pdfLight = pdfUni;
         if (bs->pdfIsProportional) {
             Float pdf = bsdf.PDF(wo, bs->wi);
             beta *= pdf / bs->pdf;
             pdfUni *= pdf;
         } else
             pdfUni *= bs->pdf;
-        rescale(beta, pdfUni, pdfNEE);
+        Rescale(beta, pdfUni, pdfLight);
 
         PBRT_DBG("%s\n", StringPrintf("Sampled BSDF, f = %s, pdf = %f -> beta = %s",
                                       bs->f, bs->pdf, beta)
@@ -1234,15 +1224,14 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             BSDF &Sw = bssrdfSample.Sw;
             pi.wo = bssrdfSample.wo;
 
-            // Possibly regularize subsurface BSDF and update _prevSurfaceIntr_
+            // Possibly regularize subsurface BSDF and update _prevIntrContext_
             anyNonSpecularBounces = true;
             if (regularize) {
                 ++regularizedBSDFs;
                 Sw.Regularize();
             } else
                 ++totalBSDFs;
-            prevSurfaceIntr = pi;
-            CHECK(!prevMediumIntr.has_value());
+            prevIntrContext = LightSampleContext(pi);
 
             // Account for attenuated direct subsurface scattering
             L += SafeDiv(SampleLd(pi, &Sw, lambda, sampler, beta, pdfUni), lambda.PDF());
@@ -1253,7 +1242,7 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             if (!bs)
                 break;
             beta *= bs->f * AbsDot(bs->wi, pi.shading.n);
-            pdfNEE = pdfUni;
+            pdfLight = pdfUni;
             pdfUni *= bs->pdf;
             // Don't increment depth this time...
             DCHECK(!IsInf(beta.y(lambda)));
@@ -1272,7 +1261,7 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             if (sampler.Get1D() < q)
                 break;
             pdfUni *= 1 - q;
-            pdfNEE *= 1 - q;
+            pdfLight *= 1 - q;
         }
     }
     return L;
@@ -1370,7 +1359,7 @@ SampledSpectrum VolPathIntegrator::SampleLd(const Interaction &intr, const BSDF 
 
                     if (!throughput)
                         return false;
-                    rescale(throughput, pdfLight, pdfUni);
+                    Rescale(throughput, pdfLight, pdfUni);
                     return true;
                 });
         }
