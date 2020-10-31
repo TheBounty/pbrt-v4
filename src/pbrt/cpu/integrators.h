@@ -220,8 +220,8 @@ class SimpleVolPathIntegrator : public RayIntegrator {
     std::string ToString() const;
 
   private:
+    // SimpleVolPathIntegrator Private Members
     int maxDepth;
-    bool sampleLights, samplePhase;
 };
 
 // VolPathIntegrator Definition
@@ -255,8 +255,8 @@ class VolPathIntegrator : public RayIntegrator {
                              const SampledSpectrum &beta,
                              const SampledSpectrum &pathPDF) const;
 
-    static void rescale(SampledSpectrum &beta, SampledSpectrum &pdfLight,
-                        SampledSpectrum &pdfUni) {
+    static void Rescale(SampledSpectrum &beta, SampledSpectrum &pdfUni,
+                        SampledSpectrum &pdfLight) {
         if (beta.MaxComponentValue() > 0x1p24f ||
             pdfLight.MaxComponentValue() > 0x1p24f ||
             pdfUni.MaxComponentValue() > 0x1p24f) {
