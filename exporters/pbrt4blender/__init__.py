@@ -100,7 +100,12 @@ class Pbrt4RenderEngine(bpy.types.RenderEngine):
             #
             result = self.begin_result(0, 0, 700, 700)
             #
-            self.beautyRender(BIN_PATH)
+            #self.beautyRender(BIN_PATH)
+            thread = threading.Thread(target=self.beautyRender, args=(BIN_PATH,))
+            thread.start()
+            while thread.is_alive():
+                self.update_result(result)
+                self.update_stats('PBRT4','Rendering...')
             #
             lay = result.layers[0]
             lay.load_from_file(BIN_PATH +"/killeroo-simple.exr")         
