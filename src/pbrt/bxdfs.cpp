@@ -565,14 +565,14 @@ Float HairBxDF::PDF(Vector3f wo, Vector3f wi, TransportMode mode,
     return pdf;
 }
 
-RGBSpectrum HairBxDF::SigmaAFromConcentration(Float ce, Float cp) {
+RGBUnboundedSpectrum HairBxDF::SigmaAFromConcentration(Float ce, Float cp) {
     RGB eumelaninSigmaA(0.419f, 0.697f, 1.37f);
     RGB pheomelaninSigmaA(0.187f, 0.4f, 1.05f);
     RGB sigma_a = ce * eumelaninSigmaA + cp * pheomelaninSigmaA;
 #ifdef PBRT_IS_GPU_CODE
-    return RGBSpectrum(*RGBColorSpace_sRGB, sigma_a);
+    return RGBUnboundedSpectrum(*RGBColorSpace_sRGB, sigma_a);
 #else
-    return RGBSpectrum(*RGBColorSpace::sRGB, sigma_a);
+    return RGBUnboundedSpectrum(*RGBColorSpace::sRGB, sigma_a);
 #endif
 }
 
@@ -591,6 +591,11 @@ std::string HairBxDF::ToString() const {
     return StringPrintf("[ HairBxDF h: %f gamma_o: %f eta: %f beta_m: %f beta_n: %f "
                         "v[0]: %f s: %f sigma_a: %s ]",
                         h, gamma_o, eta, beta_m, beta_n, v[0], s, sigma_a);
+}
+
+std::string LayeredBxDFConfig::ToString() const {
+    return StringPrintf("[ LayeredBxDFConfig maxDepth: %d nSamples: %d twoSided: %d",
+                        maxDepth, nSamples, twoSided);
 }
 
 // *****************************************************************************
