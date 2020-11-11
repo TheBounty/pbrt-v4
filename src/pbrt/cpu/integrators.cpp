@@ -195,10 +195,11 @@ void ImageTileIntegrator::Render() {
         FilmHandle film = camera.GetFilm();
         DisplayDynamic(film.GetFilename(), Point2i(pixelBounds.Diagonal()),
                        {"R", "G", "B"},
-                       [=](Bounds2i b, pstd::span<pstd::span<Float>> displayValue) {
+                       [&](Bounds2i b, pstd::span<pstd::span<Float>> displayValue) {
                            int index = 0;
                            for (Point2i p : b) {
-                               RGB rgb = film.GetPixelRGB(pixelBounds.pMin + p);
+                               RGB rgb = film.GetPixelRGB(pixelBounds.pMin + p,
+                                                          2.f / (waveStart + waveEnd));
                                for (int c = 0; c < 3; ++c)
                                    displayValue[c][index] = rgb[c];
                                ++index;
@@ -261,6 +262,7 @@ void ImageTileIntegrator::Render() {
     if (mseOutFile)
         fclose(mseOutFile);
     progress.Done();
+    DisconnectFromDisplayServer();
     LOG_VERBOSE("Rendering finished");
 }
 
@@ -2749,8 +2751,8 @@ struct SPPMPixel {
     } vp;
     AtomicFloat Phi[NSpectrumSamples];
     std::atomic<int> M{0};
-    Float N = 0;
     RGB tau;
+    Float N = 0;
 };
 
 // SPPMPixelListNode Definition
@@ -2770,10 +2772,6 @@ static bool ToGrid(const Point3f &p, const Bounds3f &bounds, const int gridRes[3
         (*pi)[i] = Clamp((*pi)[i], 0, gridRes[i] - 1);
     }
     return inBounds;
-}
-
-inline unsigned int hash(const Point3i &p, int hashSize) {
-    return Hash(p.x, p.y, p.z) % hashSize;
 }
 
 // SPPM Method Definitions
@@ -2814,6 +2812,24 @@ void SPPMIntegrator::Render() {
         ComputeRadicalInversePermutations(digitPermutationsSeed));
 
     for (int iter = 0; iter < nIterations; ++iter) {
+        // Connect to display server for SPPM if requested
+        if (iter == 0 && !Options->displayServer.empty()) {
+            DisplayDynamic(
+                film.GetFilename(), Point2i(pixelBounds.Diagonal()), {"R", "G", "B"},
+                [&](Bounds2i b, pstd::span<pstd::span<Float>> displayValue) {
+                    int index = 0;
+                    uint64_t Np = (uint64_t)(iter + 1) * (uint64_t)photonsPerIteration;
+                    for (Point2i pPixel : b) {
+                        const SPPMPixel &pixel = pixels[pPixel];
+                        RGB rgb = pixel.Ld / (iter + 1) +
+                                  pixel.tau / (Np * Pi * Sqr(pixel.radius));
+                        for (int c = 0; c < 3; ++c)
+                            displayValue[c][index] = rgb[c];
+                        ++index;
+                    }
+                });
+        }
+
         // Generate SPPM visible points
         // Sample wavelengths for SPPM pass
         const SampledWavelengths passLambda =
@@ -2848,8 +2864,8 @@ void SPPMIntegrator::Render() {
                 while (true) {
                     ++totalPhotonSurfaceInteractions;
                     pstd::optional<ShapeIntersection> si = Intersect(ray);
+                    // Accumulate light contributions for ray with no intersection
                     if (!si) {
-                        // Accumulate light contributions for ray with no intersection
                         SampledSpectrum L(0.f);
                         // Incorporate emission from infinite lights for escaped ray
                         for (const auto &light : infiniteLights) {
@@ -2868,9 +2884,9 @@ void SPPMIntegrator::Render() {
                         }
 
                         pixel.Ld += film.ToOutputRGB(L, lambda);
-
                         break;
                     }
+
                     // Process SPPM camera ray intersection
                     // Compute BSDF at SPPM camera ray intersection
                     SurfaceInteraction &isect = si->intr;
@@ -2948,12 +2964,12 @@ void SPPMIntegrator::Render() {
         progress.Update();
         // Create grid of all SPPM visible points
         // Allocate grid for SPPM visible points
-        const int hashSize = NextPrime(nPixels);
+        int hashSize = NextPrime(nPixels);
         std::vector<std::atomic<SPPMPixelListNode *>> grid(hashSize);
 
         // Compute grid bounds for SPPM visible points
         Bounds3f gridBounds;
-        Float maxRadius = 0.;
+        Float maxRadius = 0;
         for (const SPPMPixel &pixel : pixels) {
             if (!pixel.vp.beta)
                 continue;
@@ -2977,17 +2993,18 @@ void SPPMIntegrator::Render() {
                 SPPMPixel &pixel = pixels[pPixel];
                 if (pixel.vp.beta) {
                     // Add pixel's visible point to applicable grid cells
-                    Float radius = pixel.radius;
+                    // Find grid cell bounds for pixel's visible point, _pMin_ and _pMax_
+                    Float r = pixel.radius;
                     Point3i pMin, pMax;
-                    ToGrid(pixel.vp.p - Vector3f(radius, radius, radius), gridBounds,
-                           gridRes, &pMin);
-                    ToGrid(pixel.vp.p + Vector3f(radius, radius, radius), gridBounds,
-                           gridRes, &pMax);
+                    ToGrid(pixel.vp.p - Vector3f(r, r, r), gridBounds, gridRes, &pMin);
+                    ToGrid(pixel.vp.p + Vector3f(r, r, r), gridBounds, gridRes, &pMax);
+
                     for (int z = pMin.z; z <= pMax.z; ++z)
                         for (int y = pMin.y; y <= pMax.y; ++y)
                             for (int x = pMin.x; x <= pMax.x; ++x) {
                                 // Add visible point to grid cell $(x, y, z)$
-                                int h = hash(Point3i(x, y, z), hashSize);
+                                int h = Hash(Point3i(x, y, z)) % hashSize;
+                                CHECK_GE(h, 0);
                                 SPPMPixelListNode *node =
                                     scratchBuffer.Alloc<SPPMPixelListNode>();
                                 node->pixel = &pixel;
@@ -3012,6 +3029,7 @@ void SPPMIntegrator::Render() {
             photonShootScratchBuffers.push_back(ScratchBuffer(65536));
 
         ParallelFor(0, photonsPerIteration, [&](int64_t start, int64_t end) {
+            // Follow photon paths for photon index range _start_ - _end_
             ScratchBuffer &scratchBuffer = photonShootScratchBuffers[ThreadIndex];
             SamplerHandle sampler = threadSamplers[ThreadIndex];
             for (int64_t photonIndex = start; photonIndex < end; ++photonIndex) {
@@ -3065,41 +3083,40 @@ void SPPMIntegrator::Render() {
                 // Follow photon path through scene and record intersections
                 SurfaceInteraction isect;
                 for (int depth = 0; depth < maxDepth; ++depth) {
+                    // Intersect photon ray with scene and return if ray escapes
                     pstd::optional<ShapeIntersection> si = Intersect(photonRay);
                     if (!si)
                         break;
                     SurfaceInteraction &isect = si->intr;
+
                     ++totalPhotonSurfaceInteractions;
                     if (depth > 0) {
                         // Add photon contribution to nearby visible points
                         Point3i photonGridIndex;
                         if (ToGrid(isect.p(), gridBounds, gridRes, &photonGridIndex)) {
-                            int h = hash(photonGridIndex, hashSize);
+                            int h = Hash(photonGridIndex) % hashSize;
+                            CHECK_GE(h, 0);
                             // Add photon contribution to visible points in _grid[h]_
                             for (SPPMPixelListNode *node =
                                      grid[h].load(std::memory_order_relaxed);
                                  node != nullptr; node = node->next) {
                                 ++visiblePointsChecked;
                                 SPPMPixel &pixel = *node->pixel;
-                                Float radius = pixel.radius;
                                 if (DistanceSquared(pixel.vp.p, isect.p()) >
-                                    radius * radius)
+                                    Sqr(pixel.radius))
                                     continue;
                                 // Update _pixel_ $\Phi$ and $M$ for nearby photon
                                 Vector3f wi = -photonRay.d;
                                 SampledSpectrum Phi =
                                     beta * pixel.vp.bsdf.f(pixel.vp.wo, wi);
-                                if (lambda.SecondaryTerminated())
-                                    pixel.Phi[0].Add(Phi[0] / lambda.PDF()[0]);
-                                else if (pixel.vp.secondaryLambdaTerminated) {
-                                    SampledWavelengths phiLambda = lambda;
+                                // Compute _phiLambda_ for photon contribution
+                                SampledWavelengths phiLambda = lambda;
+                                if (pixel.vp.secondaryLambdaTerminated)
                                     phiLambda.TerminateSecondary();
-                                    pixel.Phi[0].Add(Phi[0] / phiLambda.PDF()[0]);
-                                } else {
-                                    Phi = SafeDiv(Phi, lambda.PDF());
-                                    for (int i = 0; i < NSpectrumSamples; ++i)
-                                        pixel.Phi[i].Add(Phi[i]);
-                                }
+
+                                Phi = SafeDiv(Phi, phiLambda.PDF());
+                                for (int i = 0; i < NSpectrumSamples; ++i)
+                                    pixel.Phi[i].Add(Phi[i]);
                                 ++pixel.M;
                             }
                         }
@@ -3124,8 +3141,8 @@ void SPPMIntegrator::Render() {
                         beta * bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
 
                     // Possibly terminate photon path with Russian roulette
-                    Float q = std::max<Float>(
-                        0, 1 - (bnew.MaxComponentValue() / beta.MaxComponentValue()));
+                    Float betaRatio = bnew.MaxComponentValue() / beta.MaxComponentValue();
+                    Float q = std::max<Float>(0, 1 - betaRatio);
                     if (Sample1D() < q)
                         break;
                     beta = bnew / (1 - q);
@@ -3136,7 +3153,7 @@ void SPPMIntegrator::Render() {
                 scratchBuffer.Reset();
             }
         });
-        // CAN CUT THIS??
+        // Reset _threadScratchBuffers_ after tracing photons
         for (ScratchBuffer &scratchBuffer : threadScratchBuffers)
             scratchBuffer.Reset();
 
@@ -3146,30 +3163,32 @@ void SPPMIntegrator::Render() {
         // Update pixel values from this pass's photons
         ParallelFor2D(pixelBounds, [&](Point2i pPixel) {
             SPPMPixel &p = pixels[pPixel];
-            int M = p.M.load();
-            if (M > 0) {
-                // Update pixel photon count, search radius, and $\tau$ from photons
+            if (int M = p.M.load(); M > 0) {
+                // Compute new photon count and search radius given photons
                 Float gamma = (Float)2 / (Float)3;
                 Float Nnew = p.N + gamma * M;
                 Float Rnew = p.radius * std::sqrt(Nnew / (p.N + M));
+
+                // Update $\tau$ for pixel
                 SampledSpectrum Phi;
-                for (int j = 0; j < NSpectrumSamples; ++j)
-                    Phi[j] = p.Phi[j];
+                for (int i = 0; i < NSpectrumSamples; ++i)
+                    Phi[i] = p.Phi[i];
                 RGB rgb = film.ToOutputRGB(p.vp.beta * Phi, passLambda);
-                p.tau = (p.tau + rgb) * (Rnew * Rnew) / (p.radius * p.radius);
+                p.tau = (p.tau + rgb) * Sqr(Rnew) / Sqr(p.radius);
+
+                // Set remaining pixel values for next photon pass
                 p.N = Nnew;
                 p.radius = Rnew;
-
                 p.M = 0;
-                for (int j = 0; j < NSpectrumSamples; ++j)
-                    p.Phi[j] = (Float)0;
+                for (int i = 0; i < NSpectrumSamples; ++i)
+                    p.Phi[i] = (Float)0;
             }
             // Reset _VisiblePoint_ in pixel
             p.vp.beta = SampledSpectrum(0.);
             p.vp.bsdf = BSDF();
         });
 
-        // Periodically store SPPM image in film and write image
+        // Periodically write SPPM image to disk
         if (iter + 1 == nIterations || (iter + 1 <= 64 && IsPowerOf2(iter + 1)) ||
             ((iter + 1) % 64 == 0)) {
             uint64_t Np = (uint64_t)(iter + 1) * (uint64_t)photonsPerIteration;
@@ -3177,10 +3196,10 @@ void SPPMIntegrator::Render() {
                            {"R", "G", "B"});
 
             ParallelFor2D(pixelBounds, [&](Point2i pPixel) {
-                // Compute radiance _L_ for SPPM pixel _pixel_
+                // Compute radiance _L_ for SPPM pixel _pPixel_
                 const SPPMPixel &pixel = pixels[pPixel];
-                RGB L = pixel.Ld / (iter + 1);
-                L += pixel.tau / (Np * Pi * pixel.radius * pixel.radius);
+                RGB L = pixel.Ld / (iter + 1) + pixel.tau / (Np * Pi * Sqr(pixel.radius));
+
                 Point2i pImage = Point2i(pPixel - pixelBounds.pMin);
                 rgbImage.SetChannels(pImage, {L.r, L.g, L.b});
             });
@@ -3227,6 +3246,7 @@ void SPPMIntegrator::Render() {
                                                        });
 #endif
     progress.Done();
+    DisconnectFromDisplayServer();
 }
 
 SampledSpectrum SPPMIntegrator::SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
