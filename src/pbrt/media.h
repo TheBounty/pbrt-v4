@@ -15,6 +15,7 @@
 #include <pbrt/util/error.h>
 #include <pbrt/util/memory.h>
 #include <pbrt/util/parallel.h>
+#include <pbrt/util/print.h>
 #include <pbrt/util/pstd.h>
 #include <pbrt/util/scattering.h>
 #include <pbrt/util/spectrum.h>
@@ -296,13 +297,13 @@ class CuboidMedium {
         }
 
         if (sig_a == nullptr) {
-            sig_a = parameters.GetOneSpectrum("sigma_a", nullptr, SpectrumType::General,
+            sig_a = parameters.GetOneSpectrum("sigma_a", nullptr, SpectrumType::Unbounded,
                                               alloc);
             if (sig_a == nullptr)
                 sig_a = alloc.new_object<ConstantSpectrum>(1.f);
         }
         if (sig_s == nullptr) {
-            sig_s = parameters.GetOneSpectrum("sigma_s", nullptr, SpectrumType::General,
+            sig_s = parameters.GetOneSpectrum("sigma_s", nullptr, SpectrumType::Unbounded,
                                               alloc);
             if (sig_s == nullptr)
                 sig_s = alloc.new_object<ConstantSpectrum>(1.f);
@@ -361,7 +362,7 @@ class UniformGridMediumProvider {
             return SampledSpectrum(densityGrid->Lookup(pp));
         else {
             RGB rgb = rgbDensityGrid->Lookup(pp);
-            return RGBSpectrum(*colorSpace, rgb).Sample(lambda);
+            return RGBUnboundedSpectrum(*colorSpace, rgb).Sample(lambda);
         }
     }
 
@@ -399,7 +400,7 @@ class UniformGridMediumProvider {
                             if (maxComponent == 0)
                                 continue;
 
-                            RGBSpectrum spec(*colorSpace, rgb);
+                            RGBUnboundedSpectrum spec(*colorSpace, rgb);
                             maxDensity = std::max(maxDensity, spec.MaxValue());
                         }
 
