@@ -213,7 +213,7 @@ static __forceinline__ __device__ void ProcessClosestIntersection(
         // TODO: intr.wo == -ray.d?
         params.hitAreaLightQueue->Push(HitAreaLightWorkItem{
             intr.areaLight, r.lambda, r.beta, r.uniPathPDF, r.lightPathPDF, intr.p(), intr.n,
-            intr.uv, intr.wo, r.piPrev, ray.d, ray.time, r.nPrev, r.nsPrev,
+            intr.uv, intr.wo, r.piPrev, ray.d, r.nPrev, r.nsPrev,
             (int)r.isSpecularBounce, r.pixelIndex});
     }
 
@@ -229,7 +229,7 @@ static __forceinline__ __device__ void ProcessClosestIntersection(
 
     auto enqueue = [=](auto ptr) {
         using Material = typename std::remove_reference_t<decltype(*ptr)>;
-        q->Push<Material>(MaterialEvalWorkItem<Material>{
+        q->Push<MaterialEvalWorkItem<Material>>(MaterialEvalWorkItem<Material>{
             ptr, r.lambda, r.beta, r.uniPathPDF, intr.pi, intr.n, intr.shading.n,
             intr.shading.dpdu, intr.shading.dpdv, intr.shading.dndu, intr.shading.dndv,
             intr.wo, intr.uv, intr.time, r.anyNonSpecularBounces, r.etaScale,
