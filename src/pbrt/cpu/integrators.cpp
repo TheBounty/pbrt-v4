@@ -649,7 +649,7 @@ void LightPathIntegrator::EvaluatePixelSample(const Point2i &pPixel, int sampleI
         if (!bs)
             break;
         beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
-        ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags);
+        ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags, bs->eta);
     }
 }
 
@@ -792,10 +792,10 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
         specularBounce = bs->IsSpecular();
         anyNonSpecularBounces |= !bs->IsSpecular();
         if (bs->IsTransmission())
-            etaScale *= Sqr(bsdf.eta);
+            etaScale *= Sqr(bs->eta);
         prevIntrCtx = si->intr;
 
-        ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags);
+        ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags, bs->eta);
 
         // Possibly terminate the path with Russian roulette
         SampledSpectrum rrBeta = beta * etaScale;
@@ -985,7 +985,7 @@ STAT_COUNTER("Integrator/Surface interactions", surfaceInteractions);
 // VolPathIntegrator Method Definitions
 SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
                                       SamplerHandle sampler, ScratchBuffer &scratchBuffer,
-                                      VisibleSurface *) const {
+                                      VisibleSurface *visibleSurf) const {
     // Declare state variables for volumetric path
     SampledSpectrum L(0.f), T_hat(1.f), uniPathPDF(1.f), lightPathPDF(1.f);
     bool specularBounce = false, anyNonSpecularBounces = false;
@@ -1146,6 +1146,27 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             continue;
         }
 
+        // Initialize _visibleSurf_ at first intersection
+        if (depth == 0 && visibleSurf != nullptr) {
+            // Estimate BSDF's albedo
+            constexpr int nRhoSamples = 16;
+            SampledSpectrum rho(0.f);
+            for (int i = 0; i < nRhoSamples; ++i) {
+                // Generate sample for hemispherical-directional reflectance
+                Float uc = RadicalInverse(0, i + 1);
+                Point2f u(RadicalInverse(1, i + 1), RadicalInverse(2, i + 1));
+
+                // Estimate one term of $\rho_\roman{hd}$
+                pstd::optional<BSDFSample> bs = bsdf.Sample_f(si->intr.wo, uc, u);
+                if (bs)
+                    rho += bs->f * AbsDot(bs->wi, si->intr.shading.n) / bs->pdf;
+            }
+            SampledSpectrum albedo = rho / nRhoSamples;
+
+            *visibleSurf =
+                VisibleSurface(si->intr, camera.GetCameraTransform(), albedo, lambda);
+        }
+
         // Terminate path if maximum depth reached
         if (depth++ >= maxDepth)
             return L;
@@ -1189,8 +1210,8 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
         specularBounce = bs->IsSpecular();
         anyNonSpecularBounces |= !bs->IsSpecular();
         if (bs->IsTransmission())
-            etaScale *= Sqr(bsdf.eta);
-        ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags);
+            etaScale *= Sqr(bs->eta);
+        ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags, bs->eta);
 
         // Account for attenuated subsurface scattering, if applicable
         BSSRDFHandle bssrdf = isect.GetBSSRDF(ray, lambda, camera, scratchBuffer);
@@ -2095,7 +2116,7 @@ int RandomWalk(const Integrator &integrator, SampledWavelengths &lambda,
         pdfFwd = bs->pdf;
         anyNonSpecularBounces |= !bs->IsSpecular();
         beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
-        ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags);
+        ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags, bs->eta);
 
         // Compute path probabilities at surface vertex
         // TODO: confirm. I believe that !mode is right. Interestingly,
@@ -2955,7 +2976,7 @@ void SPPMIntegrator::Render() {
                         break;
                     specularBounce = bs->IsSpecular();
                     if (bs->IsTransmission())
-                        etaScale *= Sqr(bsdf.eta);
+                        etaScale *= Sqr(bs->eta);
 
                     beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
                     bsdfPDF = bs->pdfIsProportional ? bsdf.PDF(wo, bs->wi) : bs->pdf;
@@ -2967,7 +2988,7 @@ void SPPMIntegrator::Render() {
                             break;
                         beta /= 1 - q;
                     }
-                    ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags);
+                    ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags, bs->eta);
                     prevIntrCtx = LightSampleContext(isect);
                 }
             }
