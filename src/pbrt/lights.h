@@ -95,125 +95,38 @@ class LightSampleContext {
 };
 
 // LightBounds Definition
-struct LightBounds {
+class LightBounds {
+  public:
     // LightBounds Public Methods
-    PBRT_CPU_GPU
-    operator bool() const { return !b.IsDegenerate(); }
-
     LightBounds() = default;
-    LightBounds(const Bounds3f &b, const Vector3f &w, Float phi, Float theta_o,
-                Float theta_e, bool twoSided)
-        : b(b),
-          w(Normalize(w)),
-          phi(phi),
-          theta_o(theta_o),
-          theta_e(theta_e),
-          cosTheta_o(std::cos(theta_o)),
-          cosTheta_e(std::cos(theta_e)),
-          twoSided(twoSided) {}
-    LightBounds(const Point3f &p, const Vector3f &w, Float phi, Float theta_o,
-                Float theta_e, bool twoSided)
-        : b(p, p),
-          w(Normalize(w)),
-          phi(phi),
-          theta_o(theta_o),
-          theta_e(theta_e),
-          cosTheta_o(std::cos(theta_o)),
-          cosTheta_e(std::cos(theta_e)),
-          twoSided(twoSided) {}
+    LightBounds(const Bounds3f &b, const Vector3f &w, Float phi, Float cosTheta_o,
+                Float cosTheta_e, bool twoSided);
 
     PBRT_CPU_GPU
-    Float Importance(Point3f p, Normal3f n) const {
-        // Compute clamped squared distance to _intr_
-        Point3f pc = Centroid();
-        Float d2 = DistanceSquared(p, pc);
-        // Don't let d2 get too small if p is inside the bounds.
-        d2 = std::max(d2, Length(b.Diagonal()) / 2);
-
-        Vector3f wi = Normalize(p - pc);
-
-        Float cosTheta = Dot(w, wi);
-        if (twoSided)
-            cosTheta = std::abs(cosTheta);
-#if 0
-    else if (cosTheta < 0 && cosTheta_o == 1) {
-        // Catch the case where the point is outside the bounds and definitely
-        // not in the emitted cone even though the conservative theta_u test
-        // make suggest it could be.
-        // Doesn't seem to make much difference in practice.
-        if ((p.x < b.pMin.x || p.x > b.pMax.x) &&
-            (p.y < b.pMin.y || p.y > b.pMax.y) &&
-            (p.z < b.pMin.z || p.z > b.pMax.z))
-            return 0;
-    }
-#endif
-
-        // FIXME? unstable when cosTheta \approx 1
-        Float sinTheta = SafeSqrt(1 - cosTheta * cosTheta);
-
-        // Define sine and cosine clamped subtraction lambdas
-        // cos(max(0, a-b))
-        auto cosSubClamped = [](Float sinThetaA, Float cosThetaA, Float sinThetaB,
-                                Float cosThetaB) -> Float {
-            if (cosThetaA > cosThetaB)
-                // Handle the max(0, ...)
-                return 1;
-            return cosThetaA * cosThetaB + sinThetaA * sinThetaB;
-        };
-        // sin(max(0, a-b))
-        auto sinSubClamped = [](Float sinThetaA, Float cosThetaA, Float sinThetaB,
-                                Float cosThetaB) -> Float {
-            if (cosThetaA > cosThetaB)
-                // Handle the max(0, ...)
-                return 0;
-            return sinThetaA * cosThetaB - cosThetaA * sinThetaB;
-        };
-
-        // Compute $\cos \theta_\roman{u}$ for _intr_
-        Float cosTheta_u = BoundSubtendedDirections(b, p).cosTheta;
-        Float sinTheta_u = SafeSqrt(1 - cosTheta_u * cosTheta_u);
-
-        // Compute $\cos \theta_\roman{p}$ for _intr_ and test against $\cos
-        // \theta_\roman{e}$
-        // cos(theta_p). Compute in two steps
-        Float cosTheta_x = cosSubClamped(
-            sinTheta, cosTheta, SafeSqrt(1 - cosTheta_o * cosTheta_o), cosTheta_o);
-        Float sinTheta_x = sinSubClamped(
-            sinTheta, cosTheta, SafeSqrt(1 - cosTheta_o * cosTheta_o), cosTheta_o);
-        Float cosTheta_p = cosSubClamped(sinTheta_x, cosTheta_x, sinTheta_u, cosTheta_u);
-        if (cosTheta_p <= cosTheta_e)
-            return 0;
-
-        Float imp = phi * cosTheta_p / d2;
-        DCHECK_GE(imp, -1e-3);
-
-        // Account for $\cos \theta_\roman{i}$ in importance at surfaces
-        if (n != Normal3f(0, 0, 0)) {
-            // cos(thetap_i) = cos(max(0, theta_i - theta_u))
-            // cos (a-b) = cos a cos b + sin a sin b
-            Float cosTheta_i = AbsDot(wi, n);
-            Float sinTheta_i = SafeSqrt(1 - cosTheta_i * cosTheta_i);
-            Float cosThetap_i =
-                cosSubClamped(sinTheta_i, cosTheta_i, sinTheta_u, cosTheta_u);
-            imp *= cosThetap_i;
-        }
-
-        return std::max<Float>(imp, 0);
-    }
+    Point3f Centroid() const { return (bounds.pMin + bounds.pMax) / 2; }
 
     PBRT_CPU_GPU
-    Point3f Centroid() const { return (b.pMin + b.pMax) / 2; }
+    Float Importance(Point3f p, Normal3f n) const;
 
     std::string ToString() const;
 
     // LightBounds Public Members
-    Bounds3f b;  // TODO: rename to |bounds|?
-    Vector3f w;
+    Bounds3f bounds;
     Float phi = 0;
-    Float theta_o = 0, theta_e = 0;
-    Float cosTheta_o = 1, cosTheta_e = 1;
-    bool twoSided = false;
+    Vector3f w;
+    Float cosTheta_o, cosTheta_e;
+    bool twoSided;
 };
+
+// LightBounds Inline Methods
+inline LightBounds::LightBounds(const Bounds3f &b, const Vector3f &w, Float phi,
+                                Float cosTheta_o, Float cosTheta_e, bool twoSided)
+    : bounds(b),
+      w(Normalize(w)),
+      phi(phi),
+      cosTheta_o(cosTheta_o),
+      cosTheta_e(cosTheta_e),
+      twoSided(twoSided) {}
 
 LightBounds Union(const LightBounds &a, const LightBounds &b);
 
@@ -273,7 +186,7 @@ class PointLight : public LightBase {
         LOG_FATAL("Shouldn't be called for non-area lights");
     }
 
-    LightBounds Bounds() const;
+    pstd::optional<LightBounds> Bounds() const;
 
     std::string ToString() const;
 
@@ -327,7 +240,7 @@ class DistantLight : public LightBase {
         LOG_FATAL("Shouldn't be called for non-area lights");
     }
 
-    LightBounds Bounds() const { return {}; }
+    pstd::optional<LightBounds> Bounds() const { return {}; }
 
     std::string ToString() const;
 
@@ -390,7 +303,7 @@ class ProjectionLight : public LightBase {
         LOG_FATAL("Shouldn't be called for non-area lights");
     }
 
-    LightBounds Bounds() const;
+    pstd::optional<LightBounds> Bounds() const;
 
     std::string ToString() const;
 
@@ -442,7 +355,7 @@ class GoniometricLight : public LightBase {
         LOG_FATAL("Shouldn't be called for non-area lights");
     }
 
-    LightBounds Bounds() const;
+    pstd::optional<LightBounds> Bounds() const;
 
     std::string ToString() const;
 
@@ -485,7 +398,7 @@ class DiffuseAreaLight : public LightBase {
     PBRT_CPU_GPU
     void PDF_Le(const Interaction &, Vector3f &w, Float *pdfPos, Float *pdfDir) const;
 
-    LightBounds Bounds() const;
+    pstd::optional<LightBounds> Bounds() const;
 
     PBRT_CPU_GPU
     void PDF_Le(const Ray &, Float *pdfPos, Float *pdfDir) const {
@@ -565,7 +478,7 @@ class UniformInfiniteLight : public LightBase {
         LOG_FATAL("Shouldn't be called for non-area lights");
     }
 
-    LightBounds Bounds() const { return {}; }
+    pstd::optional<LightBounds> Bounds() const { return {}; }
 
     std::string ToString() const;
 
@@ -639,7 +552,7 @@ class ImageInfiniteLight : public LightBase {
             Interaction(ctx.p() + wi * (2 * sceneRadius), &mediumInterface));
     }
 
-    LightBounds Bounds() const { return {}; }
+    pstd::optional<LightBounds> Bounds() const { return {}; }
 
   private:
     // ImageInfiniteLight Private Methods
@@ -699,7 +612,7 @@ class PortalImageInfiniteLight : public LightBase {
         LOG_FATAL("Shouldn't be called for non-area lights");
     }
 
-    LightBounds Bounds() const { return {}; }
+    pstd::optional<LightBounds> Bounds() const { return {}; }
 
     std::string ToString() const;
 
@@ -799,7 +712,7 @@ class SpotLight : public LightBase {
         LOG_FATAL("Shouldn't be called for non-area lights");
     }
 
-    LightBounds Bounds() const;
+    pstd::optional<LightBounds> Bounds() const;
 
     std::string ToString() const;
 
