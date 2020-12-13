@@ -31,8 +31,9 @@ namespace pbrt {
 class HaltonSampler {
   public:
     // HaltonSampler Public Methods
-    HaltonSampler(int samplesPerPixel, const Point2i &fullResolution, int seed = 0,
-                  Allocator alloc = {});
+    HaltonSampler(int samplesPerPixel, const Point2i &fullResolution,
+                  RandomizeStrategy randomizeStrategy = RandomizeStrategy::PermuteDigits,
+                  int seed = 0, Allocator alloc = {});
 
     PBRT_CPU_GPU
     static constexpr const char *Name() { return "HaltonSampler"; }
@@ -42,6 +43,9 @@ class HaltonSampler {
 
     PBRT_CPU_GPU
     int SamplesPerPixel() const { return samplesPerPixel; }
+
+    PBRT_CPU_GPU
+    RandomizeStrategy GetRandomizeStrategy() const { return randomizeStrategy; }
 
     PBRT_CPU_GPU
     void StartPixelSample(const Point2i &p, int sampleIndex, int dim) {
@@ -68,8 +72,7 @@ class HaltonSampler {
     Float Get1D() {
         if (dimension >= PrimeTableSize)
             dimension = 2;
-        int dim = dimension++;
-        return ScrambledRadicalInverse(dim, haltonIndex, (*digitPermutations)[dim]);
+        return SampleDimension(dimension++);
     }
 
     PBRT_CPU_GPU
@@ -86,9 +89,7 @@ class HaltonSampler {
                 dimension = 2;
             int dim = dimension;
             dimension += 2;
-            return {ScrambledRadicalInverse(dim, haltonIndex, (*digitPermutations)[dim]),
-                    ScrambledRadicalInverse(dim + 1, haltonIndex,
-                                            (*digitPermutations)[dim + 1])};
+            return {SampleDimension(dim), SampleDimension(dim + 1)};
         }
     }
 
@@ -115,9 +116,34 @@ class HaltonSampler {
         *y = xp - (d * yp);
     }
 
+    PBRT_CPU_GPU
+    Float SampleDimension(int dimension) const {
+        switch (randomizeStrategy) {
+        case RandomizeStrategy::None:
+            return RadicalInverse(dimension, haltonIndex);
+        case RandomizeStrategy::CranleyPatterson: {
+            Float u = uint32_t(MixBits(1 + (uint64_t(dimension) << 32))) * 0x1p-32f;
+            Float s = RadicalInverse(dimension, haltonIndex) + u;
+            if (s >= 1)
+                s -= 1;
+            return s;
+        }
+        case RandomizeStrategy::PermuteDigits:
+            return ScrambledRadicalInverse(dimension, haltonIndex,
+                                           (*digitPermutations)[dimension]);
+        case RandomizeStrategy::Owen:
+            return OwenScrambledRadicalInverse(dimension, haltonIndex,
+                                               MixBits(1 + (uint64_t(dimension) << 32)));
+        default:
+            LOG_FATAL("Unhandled randomization strategy");
+            return {};
+        }
+    }
+
     // HaltonSampler Private Members
     int samplesPerPixel;
-    pstd::vector<DigitPermutation> *digitPermutations;
+    RandomizeStrategy randomizeStrategy;
+    pstd::vector<DigitPermutation> *digitPermutations = nullptr;
     static constexpr int MaxHaltonResolution = 128;
     Point2i baseScales, baseExponents;
     int multInverse[2];
@@ -200,8 +226,8 @@ class PaddedSobolSampler {
         switch (randomizeStrategy) {
         case RandomizeStrategy::None:
             return SobolSample(a, dimension, NoRandomizer());
-        case RandomizeStrategy::XOR:
-            return SobolSample(a, dimension, XORScrambler(hash));
+        case RandomizeStrategy::PermuteDigits:
+            return SobolSample(a, dimension, BinaryPermuteScrambler(hash));
         case RandomizeStrategy::FastOwen:
             return SobolSample(a, dimension, FastOwenScrambler(hash));
         case RandomizeStrategy::Owen:
@@ -403,8 +429,8 @@ class SobolSampler {
         uint32_t hash = MixBits((uint64_t(dimension) << 32) ^ GetOptions().seed);
         if (randomizeStrategy == RandomizeStrategy::CranleyPatterson)
             return SobolSample(sobolIndex, dimension, CranleyPattersonRotator(hash));
-        else if (randomizeStrategy == RandomizeStrategy::XOR)
-            return SobolSample(sobolIndex, dimension, XORScrambler(hash));
+        else if (randomizeStrategy == RandomizeStrategy::PermuteDigits)
+            return SobolSample(sobolIndex, dimension, BinaryPermuteScrambler(hash));
         else if (randomizeStrategy == RandomizeStrategy::FastOwen)
             return SobolSample(sobolIndex, dimension, FastOwenScrambler(hash));
         else
