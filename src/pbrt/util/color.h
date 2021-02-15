@@ -395,7 +395,7 @@ class LinearColorEncoding;
 class sRGBColorEncoding;
 class GammaColorEncoding;
 
-class ColorEncodingHandle
+class ColorEncoding
     : public TaggedPointer<LinearColorEncoding, sRGBColorEncoding, GammaColorEncoding> {
   public:
     using TaggedPointer::TaggedPointer;
@@ -409,10 +409,10 @@ class ColorEncodingHandle
 
     std::string ToString() const;
 
-    static const ColorEncodingHandle Get(const std::string &name, Allocator alloc);
+    static const ColorEncoding Get(const std::string &name, Allocator alloc);
 
-    static ColorEncodingHandle Linear;
-    static ColorEncodingHandle sRGB;
+    static ColorEncoding Linear;
+    static ColorEncoding sRGB;
 
     static void Init(Allocator alloc);
 };
@@ -472,19 +472,19 @@ class GammaColorEncoding {
     pstd::array<Float, 1024> inverseLUT;
 };
 
-inline void ColorEncodingHandle::ToLinear(pstd::span<const uint8_t> vin,
-                                          pstd::span<Float> vout) const {
+inline void ColorEncoding::ToLinear(pstd::span<const uint8_t> vin,
+                                    pstd::span<Float> vout) const {
     auto tolin = [&](auto ptr) { return ptr->ToLinear(vin, vout); };
     Dispatch(tolin);
 }
 
-inline Float ColorEncodingHandle::ToFloatLinear(Float v) const {
+inline Float ColorEncoding::ToFloatLinear(Float v) const {
     auto tfl = [&](auto ptr) { return ptr->ToFloatLinear(v); };
     return Dispatch(tfl);
 }
 
-inline void ColorEncodingHandle::FromLinear(pstd::span<const Float> vin,
-                                            pstd::span<uint8_t> vout) const {
+inline void ColorEncoding::FromLinear(pstd::span<const Float> vin,
+                                      pstd::span<uint8_t> vout) const {
     auto fl = [&](auto ptr) { return ptr->FromLinear(vin, vout); };
     Dispatch(fl);
 }
@@ -545,12 +545,13 @@ const SquareMatrix<3> XYZFromLMS( 0.986993,   -0.147054,  0.159963,
 // clang-format on
 
 inline SquareMatrix<3> WhiteBalance(Point2f srcWhite, Point2f targetWhite) {
+    // Find LMS coefficients for source and target white
     XYZ srcXYZ = XYZ::FromxyY(srcWhite), dstXYZ = XYZ::FromxyY(targetWhite);
-
     auto srcLMS = LMSFromXYZ * srcXYZ, dstLMS = LMSFromXYZ * dstXYZ;
+
+    // Return white balancing matrix for source and target white
     SquareMatrix<3> LMScorrect = SquareMatrix<3>::Diag(
         dstLMS[0] / srcLMS[0], dstLMS[1] / srcLMS[1], dstLMS[2] / srcLMS[2]);
-
     return XYZFromLMS * LMScorrect * LMSFromXYZ;
 }
 

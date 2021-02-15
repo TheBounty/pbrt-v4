@@ -62,40 +62,40 @@ std::string CameraTransform::ToString() const {
 }
 
 // Camera Method Definitions
-pstd::optional<CameraRayDifferential> CameraHandle::GenerateRayDifferential(
-    const CameraSample &sample, SampledWavelengths &lambda) const {
+pstd::optional<CameraRayDifferential> Camera::GenerateRayDifferential(
+    CameraSample sample, SampledWavelengths &lambda) const {
     auto gen = [&](auto ptr) { return ptr->GenerateRayDifferential(sample, lambda); };
     return Dispatch(gen);
 }
 
-void CameraHandle::ApproximatedPdxy(SurfaceInteraction &si, int samplesPerPixel) const {
+void Camera::ApproximatedPdxy(SurfaceInteraction &si, int samplesPerPixel) const {
     auto approx = [&](auto ptr) { return ptr->ApproximatedPdxy(si, samplesPerPixel); };
     return Dispatch(approx);
 }
 
-SampledSpectrum CameraHandle::We(const Ray &ray, SampledWavelengths &lambda,
-                                 Point2f *pRaster2) const {
+SampledSpectrum Camera::We(const Ray &ray, SampledWavelengths &lambda,
+                           Point2f *pRaster2) const {
     auto we = [&](auto ptr) { return ptr->We(ray, lambda, pRaster2); };
     return Dispatch(we);
 }
 
-void CameraHandle::PDF_We(const Ray &ray, Float *pdfPos, Float *pdfDir) const {
+void Camera::PDF_We(const Ray &ray, Float *pdfPos, Float *pdfDir) const {
     auto pdf = [&](auto ptr) { return ptr->PDF_We(ray, pdfPos, pdfDir); };
     return Dispatch(pdf);
 }
 
-pstd::optional<CameraWiSample> CameraHandle::SampleWi(const Interaction &ref, Point2f u,
-                                                      SampledWavelengths &lambda) const {
+pstd::optional<CameraWiSample> Camera::SampleWi(const Interaction &ref, Point2f u,
+                                                SampledWavelengths &lambda) const {
     auto sample = [&](auto ptr) { return ptr->SampleWi(ref, u, lambda); };
     return Dispatch(sample);
 }
 
-void CameraHandle::InitMetadata(ImageMetadata *metadata) const {
+void Camera::InitMetadata(ImageMetadata *metadata) const {
     auto init = [&](auto ptr) { return ptr->InitMetadata(metadata); };
     return DispatchCPU(init);
 }
 
-std::string CameraHandle::ToString() const {
+std::string Camera::ToString() const {
     if (ptr() == nullptr)
         return "(nullptr)";
 
@@ -111,7 +111,7 @@ CameraBase::CameraBase(CameraBaseParameters p)
       film(p.film),
       medium(p.medium) {
     if (cameraTransform.CameraFromRenderHasScale())
-        Warning("Scaling detected in world-to-camera transformation!\n"
+        Warning("Scaling detected in rendering space to camera space transformation!\n"
                 "The system has numerous assumptions, implicit and explicit,\n"
                 "that this transform will have no scale factors in it.\n"
                 "Proceed at your own risk; your image may have errors or\n"
@@ -119,7 +119,7 @@ CameraBase::CameraBase(CameraBaseParameters p)
 }
 
 pstd::optional<CameraRayDifferential> CameraBase::GenerateRayDifferential(
-    CameraHandle camera, const CameraSample &sample, SampledWavelengths &lambda) {
+    Camera camera, CameraSample sample, SampledWavelengths &lambda) {
     // Generate regular camera ray _cr_ for ray differential
     pstd::optional<CameraRay> cr = camera.GenerateRay(sample, lambda);
     if (!cr)
@@ -185,7 +185,7 @@ void CameraBase::ApproximatedPdxy(SurfaceInteraction &si, int samplesPerPixel) c
         sppScale * RenderFromCamera(DownZFromCamera.ApplyInverse(py - pDownZ), si.time);
 }
 
-void CameraBase::FindMinimumDifferentials(CameraHandle camera) {
+void CameraBase::FindMinimumDifferentials(Camera camera) {
     minPosDifferentialX = minPosDifferentialY = minDirDifferentialX =
         minDirDifferentialY = Vector3f(Infinity, Infinity, Infinity);
 
@@ -273,12 +273,10 @@ std::string ProjectiveCamera::BaseToString() const {
                         screenFromRaster, lensRadius, focalDistance);
 }
 
-CameraHandle CameraHandle::Create(const std::string &name,
-                                  const ParameterDictionary &parameters,
-                                  MediumHandle medium,
-                                  const CameraTransform &cameraTransform, FilmHandle film,
-                                  const FileLoc *loc, Allocator alloc) {
-    CameraHandle camera;
+Camera Camera::Create(const std::string &name, const ParameterDictionary &parameters,
+                      Medium medium, const CameraTransform &cameraTransform, Film film,
+                      const FileLoc *loc, Allocator alloc) {
+    Camera camera;
     if (name == "perspective")
         camera = PerspectiveCamera::Create(parameters, cameraTransform, film, medium, loc,
                                            alloc);
@@ -303,7 +301,7 @@ CameraHandle CameraHandle::Create(const std::string &name,
 
 // CameraBaseParameters Method Definitions
 CameraBaseParameters::CameraBaseParameters(const CameraTransform &cameraTransform,
-                                           FilmHandle film, MediumHandle medium,
+                                           Film film, Medium medium,
                                            const ParameterDictionary &parameters,
                                            const FileLoc *loc)
     : cameraTransform(cameraTransform), film(film), medium(medium) {
@@ -342,7 +340,7 @@ pstd::optional<CameraRay> OrthographicCamera::GenerateRay(
 }
 
 pstd::optional<CameraRayDifferential> OrthographicCamera::GenerateRayDifferential(
-    const CameraSample &sample, SampledWavelengths &lambda) const {
+    CameraSample sample, SampledWavelengths &lambda) const {
     // Compute main orthographic viewing ray
     // Compute raster and camera sample positions
     Point3f pFilm = Point3f(sample.pFilm.x, sample.pFilm.y, 0);
@@ -395,7 +393,7 @@ std::string OrthographicCamera::ToString() const {
 
 OrthographicCamera *OrthographicCamera::Create(const ParameterDictionary &parameters,
                                                const CameraTransform &cameraTransform,
-                                               FilmHandle film, MediumHandle medium,
+                                               Film film, Medium medium,
                                                const FileLoc *loc, Allocator alloc) {
     CameraBaseParameters cameraBaseParameters(cameraTransform, film, medium, parameters,
                                               loc);
@@ -458,7 +456,7 @@ pstd::optional<CameraRay> PerspectiveCamera::GenerateRay(
 }
 
 pstd::optional<CameraRayDifferential> PerspectiveCamera::GenerateRayDifferential(
-    const CameraSample &sample, SampledWavelengths &lambda) const {
+    CameraSample sample, SampledWavelengths &lambda) const {
     // Compute raster and camera sample positions
     Point3f pFilm = Point3f(sample.pFilm.x, sample.pFilm.y, 0);
     Point3f pCamera = cameraFromRaster(pFilm);
@@ -516,8 +514,8 @@ std::string PerspectiveCamera::ToString() const {
 
 PerspectiveCamera *PerspectiveCamera::Create(const ParameterDictionary &parameters,
                                              const CameraTransform &cameraTransform,
-                                             FilmHandle film, MediumHandle medium,
-                                             const FileLoc *loc, Allocator alloc) {
+                                             Film film, Medium medium, const FileLoc *loc,
+                                             Allocator alloc) {
     CameraBaseParameters cameraBaseParameters(cameraTransform, film, medium, parameters,
                                               loc);
 
@@ -657,8 +655,8 @@ pstd::optional<CameraRay> SphericalCamera::GenerateRay(CameraSample sample,
 
 SphericalCamera *SphericalCamera::Create(const ParameterDictionary &parameters,
                                          const CameraTransform &cameraTransform,
-                                         FilmHandle film, MediumHandle medium,
-                                         const FileLoc *loc, Allocator alloc) {
+                                         Film film, Medium medium, const FileLoc *loc,
+                                         Allocator alloc) {
     CameraBaseParameters cameraBaseParameters(cameraTransform, film, medium, parameters,
                                               loc);
 
@@ -724,7 +722,7 @@ RealisticCamera::RealisticCamera(CameraBaseParameters baseParameters,
     // Compute film's physical extent
     Float aspect = (Float)film.FullResolution().y / (Float)film.FullResolution().x;
     Float diagonal = film.Diagonal();
-    Float x = std::sqrt(diagonal * diagonal / (1 + aspect * aspect));
+    Float x = std::sqrt(Sqr(diagonal) / (1 + Sqr(aspect)));
     Float y = aspect * x;
     physicalExtent = Bounds2f(Point2f(-x / 2, -y / 2), Point2f(x / 2, y / 2));
 
@@ -809,8 +807,8 @@ Float RealisticCamera::TraceLensesFromFilm(const Ray &rCamera, Ray *rOut) const 
 
         } else {
             // Check intersection point against spherical aperture
-            Float r2 = pHit.x * pHit.x + pHit.y * pHit.y;
-            if (r2 > element.apertureRadius * element.apertureRadius)
+            Float r2 = Sqr(pHit.x) + Sqr(pHit.y);
+            if (r2 > Sqr(element.apertureRadius))
                 return 0;
         }
         rLens.o = pHit;
@@ -835,8 +833,7 @@ Float RealisticCamera::TraceLensesFromFilm(const Ray &rCamera, Ray *rOut) const 
     return weight;
 }
 
-void RealisticCamera::ComputeCardinalPoints(const Ray &rIn, const Ray &rOut, Float *pz,
-                                            Float *fz) {
+void RealisticCamera::ComputeCardinalPoints(Ray rIn, Ray rOut, Float *pz, Float *fz) {
     Float tf = -rOut.o.x / rOut.d.x;
     *fz = -rOut(tf).z;
     Float tp = (rIn.o.x - rOut.o.x) / rOut.d.x;
@@ -921,10 +918,10 @@ Bounds2f RealisticCamera::BoundExitPupil(Float filmX0, Float filmX1) const {
     return pupilBounds;
 }
 
-Point3f RealisticCamera::SampleExitPupil(const Point2f &pFilm, const Point2f &lensSample,
+Point3f RealisticCamera::SampleExitPupil(Point2f pFilm, Point2f lensSample,
                                          Float *sampleBoundsArea) const {
     // Find exit pupil bound for sample distance from film center
-    Float rFilm = std::sqrt(pFilm.x * pFilm.x + pFilm.y * pFilm.y);
+    Float rFilm = std::sqrt(Sqr(pFilm.x) + Sqr(pFilm.y));
     int rIndex = rFilm / (film.Diagonal() / 2) * exitPupilBounds.size();
     rIndex = std::min<int>(exitPupilBounds.size() - 1, rIndex);
     Bounds2f pupilBounds = exitPupilBounds[rIndex];
@@ -967,8 +964,7 @@ pstd::optional<CameraRay> RealisticCamera::GenerateRay(CameraSample sample,
 
     // Compute weighting for _RealisticCamera_ ray
     Float cosTheta = Normalize(rFilm.d).z;
-    weight *= (shutterClose - shutterOpen) * Pow<4>(cosTheta) * exitPupilBoundsArea /
-              Sqr(LensRearZ());
+    weight *= Pow<4>(cosTheta) * exitPupilBoundsArea / Sqr(LensRearZ());
 
     return CameraRay{ray, SampledSpectrum(weight)};
 }
@@ -1318,8 +1314,8 @@ std::string RealisticCamera::ToString() const {
 
 RealisticCamera *RealisticCamera::Create(const ParameterDictionary &parameters,
                                          const CameraTransform &cameraTransform,
-                                         FilmHandle film, MediumHandle medium,
-                                         const FileLoc *loc, Allocator alloc) {
+                                         Film film, Medium medium, const FileLoc *loc,
+                                         Allocator alloc) {
     CameraBaseParameters cameraBaseParameters(cameraTransform, film, medium, parameters,
                                               loc);
 

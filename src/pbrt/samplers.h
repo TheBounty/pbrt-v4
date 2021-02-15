@@ -91,7 +91,7 @@ class HaltonSampler {
         return {SampleDimension(dim), SampleDimension(dim + 1)};
     }
 
-    std::vector<SamplerHandle> Clone(int n, Allocator alloc);
+    std::vector<Sampler> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
   private:
@@ -217,7 +217,7 @@ class PaddedSobolSampler {
     PBRT_CPU_GPU
     Point2f GetPixel2D() { return Get2D(); }
 
-    std::vector<SamplerHandle> Clone(int n, Allocator alloc);
+    std::vector<Sampler> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
   private:
@@ -333,10 +333,9 @@ class ZSobolSampler {
     PBRT_CPU_GPU
     Point2f GetPixel2D() { return Get2D(); }
 
-    std::vector<SamplerHandle> Clone(int n, Allocator alloc);
+    std::vector<Sampler> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
-  private:
     PBRT_CPU_GPU
     uint64_t GetSampleIndex() const {
         static const uint8_t permutations[24][4] = {
@@ -359,10 +358,12 @@ class ZSobolSampler {
         if (pow2Samples) {
             sampleIndex |= (mortonIndex & 3);
             sampleIndex >>= 1;
+            sampleIndex ^= MixBits((mortonIndex >> 2) ^ (0x55555555 * dimension)) & 1;
         }
         return sampleIndex;
     }
 
+  private:
     PBRT_CPU_GPU
     int HashPerm(uint64_t index) const {
         return uint32_t(MixBits(index ^ (0x55555555 * dimension)) >> 24) % 24;
@@ -440,7 +441,7 @@ class PMJ02BNSampler {
         return {std::min(u.x, OneMinusEpsilon), std::min(u.y, OneMinusEpsilon)};
     }
 
-    std::vector<SamplerHandle> Clone(int n, Allocator alloc);
+    std::vector<Sampler> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
   private:
@@ -480,7 +481,7 @@ class RandomSampler {
     PBRT_CPU_GPU
     Point2f GetPixel2D() { return Get2D(); }
 
-    std::vector<SamplerHandle> Clone(int n, Allocator alloc);
+    std::vector<Sampler> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
   private:
@@ -548,7 +549,7 @@ class SobolSampler {
         return u;
     }
 
-    std::vector<SamplerHandle> Clone(int n, Allocator alloc);
+    std::vector<Sampler> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
   private:
@@ -635,7 +636,7 @@ class StratifiedSampler {
     PBRT_CPU_GPU
     Point2f GetPixel2D() { return Get2D(); }
 
-    std::vector<SamplerHandle> Clone(int n, Allocator alloc);
+    std::vector<Sampler> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
   private:
@@ -689,7 +690,7 @@ class MLTSampler {
     PBRT_CPU_GPU
     Point2f GetPixel2D();
 
-    std::vector<SamplerHandle> Clone(int n, Allocator alloc);
+    std::vector<Sampler> Clone(int n, Allocator alloc);
 
     PBRT_CPU_GPU
     void Accept();
@@ -782,30 +783,29 @@ class DebugMLTSampler : public MLTSampler {
     std::vector<Float> u;
 };
 
-inline void SamplerHandle::StartPixelSample(const Point2i &p, int sampleIndex,
-                                            int dimension) {
+inline void Sampler::StartPixelSample(const Point2i &p, int sampleIndex, int dimension) {
     auto start = [&](auto ptr) {
         return ptr->StartPixelSample(p, sampleIndex, dimension);
     };
     return Dispatch(start);
 }
 
-inline int SamplerHandle::SamplesPerPixel() const {
+inline int Sampler::SamplesPerPixel() const {
     auto spp = [&](auto ptr) { return ptr->SamplesPerPixel(); };
     return Dispatch(spp);
 }
 
-inline Float SamplerHandle::Get1D() {
+inline Float Sampler::Get1D() {
     auto get = [&](auto ptr) { return ptr->Get1D(); };
     return Dispatch(get);
 }
 
-inline Point2f SamplerHandle::Get2D() {
+inline Point2f Sampler::Get2D() {
     auto get = [&](auto ptr) { return ptr->Get2D(); };
     return Dispatch(get);
 }
 
-inline Point2f SamplerHandle::GetPixel2D() {
+inline Point2f Sampler::GetPixel2D() {
     auto get = [&](auto ptr) { return ptr->GetPixel2D(); };
     return Dispatch(get);
 }
@@ -813,7 +813,7 @@ inline Point2f SamplerHandle::GetPixel2D() {
 // Sampler Inline Functions
 template <typename Sampler>
 inline PBRT_CPU_GPU CameraSample GetCameraSample(Sampler sampler, const Point2i &pPixel,
-                                                 FilterHandle filter) {
+                                                 Filter filter) {
     FilterSample fs = filter.Sample(sampler.GetPixel2D());
     if (GetOptions().disablePixelJitter) {
         fs.p = Point2f(0, 0);
