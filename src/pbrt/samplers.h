@@ -33,7 +33,7 @@ class HaltonSampler {
   public:
     // HaltonSampler Public Methods
     HaltonSampler(int samplesPerPixel, const Point2i &fullResolution,
-                  RandomizeStrategy randomizeStrategy = RandomizeStrategy::PermuteDigits,
+                  RandomizeStrategy randomize = RandomizeStrategy::PermuteDigits,
                   int seed = 0, Allocator alloc = {});
 
     PBRT_CPU_GPU
@@ -46,7 +46,7 @@ class HaltonSampler {
     int SamplesPerPixel() const { return samplesPerPixel; }
 
     PBRT_CPU_GPU
-    RandomizeStrategy GetRandomizeStrategy() const { return randomizeStrategy; }
+    RandomizeStrategy GetRandomizeStrategy() const { return randomize; }
 
     PBRT_CPU_GPU
     void StartPixelSample(const Point2i &p, int sampleIndex, int dim) {
@@ -116,16 +116,9 @@ class HaltonSampler {
 
     PBRT_CPU_GPU
     Float SampleDimension(int dimension) const {
-        switch (randomizeStrategy) {
+        switch (randomize) {
         case RandomizeStrategy::None:
             return RadicalInverse(dimension, haltonIndex);
-        case RandomizeStrategy::CranleyPatterson: {
-            Float u = uint32_t(MixBits(1 + (uint64_t(dimension) << 32))) * 0x1p-32f;
-            Float s = RadicalInverse(dimension, haltonIndex) + u;
-            if (s >= 1)
-                s -= 1;
-            return s;
-        }
         case RandomizeStrategy::PermuteDigits:
             return ScrambledRadicalInverse(dimension, haltonIndex,
                                            (*digitPermutations)[dimension]);
@@ -140,7 +133,7 @@ class HaltonSampler {
 
     // HaltonSampler Private Members
     int samplesPerPixel;
-    RandomizeStrategy randomizeStrategy;
+    RandomizeStrategy randomize;
     pstd::vector<DigitPermutation> *digitPermutations = nullptr;
     static constexpr int MaxHaltonResolution = 128;
     Point2i baseScales, baseExponents;
@@ -159,7 +152,7 @@ class PaddedSobolSampler {
                                       const FileLoc *loc, Allocator alloc);
 
     PaddedSobolSampler(int samplesPerPixel, RandomizeStrategy randomizer)
-        : samplesPerPixel(samplesPerPixel), randomizeStrategy(randomizer) {
+        : samplesPerPixel(samplesPerPixel), randomize(randomizer) {
         if (!IsPowerOf2(samplesPerPixel))
             Warning("Sobol samplers with non power-of-two sample counts (%d) are "
                     "sub-optimal.",
@@ -185,12 +178,7 @@ class PaddedSobolSampler {
 
         int dim = dimension++;
         // Return randomized 1D van der Corput sample for dimension _dim_
-        if (randomizeStrategy == RandomizeStrategy::CranleyPatterson)
-            // Return 1D sample randomized with Cranley-Patterson rotation
-            return SobolSample(index, 0, CranleyPattersonRotator(BlueNoise(dim, pixel)));
-
-        else
-            return SampleDimension(0, index, hash >> 32);
+        return SampleDimension(0, index, hash >> 32);
     }
 
     PBRT_CPU_GPU
@@ -203,15 +191,8 @@ class PaddedSobolSampler {
         int dim = dimension;
         dimension += 2;
         // Return randomized 2D Sobol' sample
-        if (randomizeStrategy == RandomizeStrategy::CranleyPatterson) {
-            // Return 2D sample randomized with Cranley-Patterson rotation
-            return {SobolSample(index, 0, CranleyPattersonRotator(BlueNoise(dim, pixel))),
-                    SobolSample(index, 1,
-                                CranleyPattersonRotator(BlueNoise(dim + 1, pixel)))};
-
-        } else
-            return {SampleDimension(0, index, hash >> 8),
-                    SampleDimension(1, index, hash >> 32)};
+        return {SampleDimension(0, index, hash >> 8),
+                SampleDimension(1, index, hash >> 32)};
     }
 
     PBRT_CPU_GPU
@@ -224,7 +205,7 @@ class PaddedSobolSampler {
     // PaddedSobolSampler Private Methods
     PBRT_CPU_GPU
     Float SampleDimension(int dimension, uint32_t a, uint32_t hash) const {
-        switch (randomizeStrategy) {
+        switch (randomize) {
         case RandomizeStrategy::None:
             return SobolSample(a, dimension, NoRandomizer());
         case RandomizeStrategy::PermuteDigits:
@@ -241,7 +222,7 @@ class PaddedSobolSampler {
 
     // PaddedSobolSampler Private Members
     int samplesPerPixel;
-    RandomizeStrategy randomizeStrategy;
+    RandomizeStrategy randomize;
     Point2i pixel;
     int sampleIndex, dimension;
 };
@@ -250,9 +231,9 @@ class PaddedSobolSampler {
 class ZSobolSampler {
   public:
     ZSobolSampler(int samplesPerPixel, Point2i fullResolution,
-                  RandomizeStrategy randomizeStrategy = RandomizeStrategy::PermuteDigits,
+                  RandomizeStrategy randomize = RandomizeStrategy::PermuteDigits,
                   int seed = 0)
-        : randomizeStrategy(randomizeStrategy), seed(seed) {
+        : randomize(randomize), seed(seed) {
         if (!IsPowerOf2(samplesPerPixel)) {
             Warning("Rounding %d up to the next power of two for \"zsobol\" sampler "
                     "samples per pixel.",
@@ -293,13 +274,11 @@ class ZSobolSampler {
 
         ++dimension;
 
-        if (randomizeStrategy == RandomizeStrategy::None)
+        if (randomize == RandomizeStrategy::None)
             return SobolSample(sampleIndex, 0, NoRandomizer());
-        else if (randomizeStrategy == RandomizeStrategy::CranleyPatterson)
-            return SobolSample(sampleIndex, 0, CranleyPattersonRotator(sampleHash));
-        else if (randomizeStrategy == RandomizeStrategy::PermuteDigits)
+        else if (randomize == RandomizeStrategy::PermuteDigits)
             return SobolSample(sampleIndex, 0, BinaryPermuteScrambler(sampleHash));
-        else if (randomizeStrategy == RandomizeStrategy::FastOwen)
+        else if (randomize == RandomizeStrategy::FastOwen)
             return SobolSample(sampleIndex, 0, FastOwenScrambler(sampleHash));
         else
             return SobolSample(sampleIndex, 0, OwenScrambler(sampleHash));
@@ -313,16 +292,13 @@ class ZSobolSampler {
 
         dimension += 2;
 
-        if (randomizeStrategy == RandomizeStrategy::None)
+        if (randomize == RandomizeStrategy::None)
             return {SobolSample(sampleIndex, 0, NoRandomizer()),
                     SobolSample(sampleIndex, 1, NoRandomizer())};
-        else if (randomizeStrategy == RandomizeStrategy::CranleyPatterson)
-            return {SobolSample(sampleIndex, 0, CranleyPattersonRotator(sampleHash[0])),
-                    SobolSample(sampleIndex, 1, CranleyPattersonRotator(sampleHash[1]))};
-        else if (randomizeStrategy == RandomizeStrategy::PermuteDigits)
+        else if (randomize == RandomizeStrategy::PermuteDigits)
             return {SobolSample(sampleIndex, 0, BinaryPermuteScrambler(sampleHash[0])),
                     SobolSample(sampleIndex, 1, BinaryPermuteScrambler(sampleHash[1]))};
-        else if (randomizeStrategy == RandomizeStrategy::FastOwen)
+        else if (randomize == RandomizeStrategy::FastOwen)
             return {SobolSample(sampleIndex, 0, FastOwenScrambler(sampleHash[0])),
                     SobolSample(sampleIndex, 1, FastOwenScrambler(sampleHash[1]))};
         else
@@ -369,7 +345,7 @@ class ZSobolSampler {
         return uint32_t(MixBits(index ^ (0x55555555 * dimension)) >> 24) % 24;
     }
 
-    RandomizeStrategy randomizeStrategy;
+    RandomizeStrategy randomize;
     int log2SamplesPerPixel, seed, nBase4Digits;
     uint64_t mortonIndex;
     int dimension;
@@ -495,8 +471,8 @@ class SobolSampler {
   public:
     // SobolSampler Public Methods
     SobolSampler(int samplesPerPixel, const Point2i &fullResolution,
-                 RandomizeStrategy randomizeStrategy)
-        : samplesPerPixel(samplesPerPixel), randomizeStrategy(randomizeStrategy) {
+                 RandomizeStrategy randomize)
+        : samplesPerPixel(samplesPerPixel), randomize(randomize) {
         if (!IsPowerOf2(samplesPerPixel))
             Warning("Non power-of-two sample count %d will perform sub-optimally with "
                     "the SobolSampler.",
@@ -557,16 +533,14 @@ class SobolSampler {
     PBRT_CPU_GPU
     Float SampleDimension(int dimension) const {
         // Return un-randomized Sobol sample if appropriate
-        if (dimension < 2 || randomizeStrategy == RandomizeStrategy::None)
+        if (dimension < 2 || randomize == RandomizeStrategy::None)
             return SobolSample(sobolIndex, dimension, NoRandomizer());
 
-        // Return randomized Sobol sample using _randomizeStrategy_
+        // Return randomized Sobol sample using _randomize_
         uint32_t hash = MixBits((uint64_t(dimension) << 32) ^ GetOptions().seed);
-        if (randomizeStrategy == RandomizeStrategy::CranleyPatterson)
-            return SobolSample(sobolIndex, dimension, CranleyPattersonRotator(hash));
-        else if (randomizeStrategy == RandomizeStrategy::PermuteDigits)
+        if (randomize == RandomizeStrategy::PermuteDigits)
             return SobolSample(sobolIndex, dimension, BinaryPermuteScrambler(hash));
-        else if (randomizeStrategy == RandomizeStrategy::FastOwen)
+        else if (randomize == RandomizeStrategy::FastOwen)
             return SobolSample(sobolIndex, dimension, FastOwenScrambler(hash));
         else
             return SobolSample(sobolIndex, dimension, OwenScrambler(hash));
@@ -574,7 +548,7 @@ class SobolSampler {
 
     // SobolSampler Private Members
     int samplesPerPixel, scale;
-    RandomizeStrategy randomizeStrategy;
+    RandomizeStrategy randomize;
     Point2i pixel;
     int dimension;
     int64_t sobolIndex;
