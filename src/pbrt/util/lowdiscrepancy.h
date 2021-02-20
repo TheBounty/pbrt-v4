@@ -18,9 +18,9 @@
 #include <algorithm>
 #include <memory>
 #include <string>
-if (MSVC)
+#if defined(_MSC_VER)
   #pragma warning(disable : 4334)
-endif()
+#endif()
 namespace pbrt {
 
 // DigitPermutation Definition
