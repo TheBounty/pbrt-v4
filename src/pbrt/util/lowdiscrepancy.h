@@ -19,9 +19,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
-#if defined(_MSC_VER)
-  #pragma warning(disable : 4334)
-#endif()
+
 namespace pbrt {
 
 // DigitPermutation Definition
