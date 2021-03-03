@@ -5,7 +5,9 @@
 // pspec.cpp
 
 // Computes power spectra of a variety point sets used by pbrt's samplers.
-
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
 #include <pbrt/pbrt.h>
 
 #include <pbrt/base/sampler.h>

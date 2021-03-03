@@ -220,6 +220,7 @@ if (CMAKE_CUDA_COMPILER)
             set(ARCH "${PBRT_GPU_SHADER_MODEL}")
             message (STATUS "Specified CUDA Architecture: ${ARCH}")
             string (APPEND CMAKE_CUDA_FLAGS " --gpu-architecture=${ARCH}")
+			set(CMAKE_CUDA_ARCHITECTURES ${ARCH})
         endif ()
 
         set (PBRT_CUDA_LIB cuda)

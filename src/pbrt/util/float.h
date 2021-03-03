@@ -4,7 +4,9 @@
 
 #ifndef PBRT_UTIL_FLOAT_H
 #define PBRT_UTIL_FLOAT_H
-
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
 #include <pbrt/pbrt.h>
 
 #include <pbrt/util/pstd.h>
