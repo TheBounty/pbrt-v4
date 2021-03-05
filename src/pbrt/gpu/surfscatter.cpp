@@ -101,6 +101,8 @@ void GPUPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
             using BxDF = typename Mtl::BxDF;
             BxDF bxdf;
             BSDF bsdf = w.material->GetBSDF(texEval, ctx, lambda, &bxdf);
+            if (lambda.SecondaryTerminated())
+                pixelSampleState.lambda[w.pixelIndex] = lambda;
 
             // Regularize BSDF, if appropriate
             if (regularize && w.anyNonSpecularBounces)
@@ -259,7 +261,7 @@ void GPUPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                 SampledSpectrum lightPathPDF = w.uniPathPDF * lightPDF;
 
                 // Enqueue shadow ray with tentative radiance contribution
-                SampledSpectrum Ld = SafeDiv(T_hat * ls->L, lambda.PDF());
+                SampledSpectrum Ld = T_hat * ls->L;
                 Ray ray = SpawnRayTo(w.pi, w.n, w.time, ls->pLight.pi, ls->pLight.n);
                 // Initialize _ray_ medium if media are present
                 if (haveMedia)
