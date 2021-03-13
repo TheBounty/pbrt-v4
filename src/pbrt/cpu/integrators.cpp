@@ -736,7 +736,7 @@ SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lamb
         pstd::optional<BSDFSample> bs = bsdf.Sample_f(wo, u, sampler.Get2D());
         if (!bs)
             break;
-        // Update path state variables for after surface scattering
+        // Update path state variables after surface scattering
         beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
         bsdfPDF = bs->pdfIsProportional ? bsdf.PDF(wo, bs->wi) : bs->pdf;
         DCHECK(!IsInf(beta.y(lambda)));
@@ -840,14 +840,13 @@ SampledSpectrum SimpleVolPathIntegrator::Li(RayDifferential ray,
     Float beta = 1.f;
     int depth = 0;
 
-    bool scattered = false, terminated = false;
-
     // Terminate secondary wavelengths before starting random walk
     lambda.TerminateSecondary();
 
     while (true) {
         // Estimate radiance for ray path using delta tracking
         pstd::optional<ShapeIntersection> si = Intersect(ray);
+        bool scattered = false, terminated = false;
         if (ray.medium) {
             // Initialize RNG for delta tracking
             uint64_t hash0 = Hash(sampler.Get1D());
@@ -954,14 +953,13 @@ STAT_COUNTER("Integrator/Surface interactions", surfaceInteractions);
 SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
                                       Sampler sampler, ScratchBuffer &scratchBuffer,
                                       VisibleSurface *visibleSurf) const {
-    // Declare state variables for volumetric path
+    // Declare state variables for volumetric path sampling
     SampledSpectrum L(0.f), T_hat(1.f), uniPathPDF(1.f), lightPathPDF(1.f);
     bool specularBounce = false, anyNonSpecularBounces = false;
     int depth = 0;
+    Float etaScale = 1;
 
     LightSampleContext prevIntrContext;
-
-    Float etaScale = 1;
 
     while (true) {
         // Sample segment of volumetric scattering path
@@ -974,9 +972,11 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             // Sample the participating medium
             bool scattered = false, terminated = false;
             Float tMax = si ? si->tHit : Infinity;
+            // Initialize RNG for delta tracking
             uint64_t hash0 = Hash(sampler.Get1D());
             uint64_t hash1 = Hash(sampler.Get1D());
             RNG rng(hash0, hash1);
+
             SampledSpectrum T_maj = ray.medium.SampleT_maj(
                 ray, tMax, sampler.Get1D(), rng, lambda,
                 [&](const MediumSample &mediumSample) {
@@ -1021,10 +1021,12 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
 
                     } else if (mode == 1) {
                         // Handle scattering along ray path
+                        // Stop path sampling if maximum depth has been reached
                         if (depth++ >= maxDepth) {
                             terminated = true;
                             return false;
                         }
+
                         T_hat *= T_maj * sigma_s;
                         uniPathPDF *= T_maj * sigma_s;
                         // Sample direct lighting at volume scattering event
@@ -1177,6 +1179,7 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
                                       bs->f, bs->pdf, T_hat)
                              .c_str());
         DCHECK(IsInf(T_hat.y(lambda)) == false);
+        // Update volumetric integrator path state after surface scattering
         specularBounce = bs->IsSpecular();
         anyNonSpecularBounces |= !bs->IsSpecular();
         if (bs->IsTransmission())
@@ -1270,8 +1273,8 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
 
 SampledSpectrum VolPathIntegrator::SampleLd(const Interaction &intr, const BSDF *bsdf,
                                             SampledWavelengths &lambda, Sampler sampler,
-                                            const SampledSpectrum &T_hat,
-                                            const SampledSpectrum &pathPDF) const {
+                                            SampledSpectrum T_hat,
+                                            SampledSpectrum pathPDF) const {
     // Estimate light-sampled direct illumination at _intr_
     // Initialize _LightSampleContext_ for volumetric light sampling
     LightSampleContext ctx;
@@ -1293,7 +1296,7 @@ SampledSpectrum VolPathIntegrator::SampleLd(const Interaction &intr, const BSDF 
     if (!sampledLight)
         return SampledSpectrum(0.f);
     Light light = sampledLight->light;
-    CHECK(light != nullptr && sampledLight->pdf != 0);
+    DCHECK(light != nullptr && sampledLight->pdf != 0);
 
     // Sample a point on the light source
     pstd::optional<LightLiSample> ls =
@@ -1336,9 +1339,9 @@ SampledSpectrum VolPathIntegrator::SampleLd(const Interaction &intr, const BSDF 
         // Update transmittance for current ray segment
         if (lightRay.medium != nullptr) {
             Float tMax = si ? si->tHit : (1 - ShadowEpsilon);
+            Float u = rng.Uniform<Float>();
             SampledSpectrum T_maj = lightRay.medium.SampleT_maj(
-                lightRay, tMax, rng.Uniform<Float>(), rng, lambda,
-                [&](const MediumSample &mediumSample) {
+                lightRay, tMax, u, rng, lambda, [&](const MediumSample &mediumSample) {
                     // Update ray transmittance estimate at sampled point
                     // Update _T_ray_ and PDFs using ratio-tracking estimator
                     const MediumInteraction &intr = mediumSample.intr;
