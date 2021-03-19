@@ -284,7 +284,7 @@ class VolPathIntegrator : public RayIntegrator {
     // VolPathIntegrator Private Methods
     SampledSpectrum SampleLd(const Interaction &intr, const BSDF *bsdf,
                              SampledWavelengths &lambda, Sampler sampler,
-                             SampledSpectrum beta, SampledSpectrum pathPDF) const;
+                             SampledSpectrum T_hat, SampledSpectrum pathPDF) const;
 
     static void Rescale(SampledSpectrum &T_hat, SampledSpectrum &uniPathPDF,
                         SampledSpectrum &lightPathPDF) {
@@ -357,7 +357,7 @@ class LightPathIntegrator : public ImageTileIntegrator {
   private:
     // LightPathIntegrator Private Members
     int maxDepth;
-    std::unique_ptr<PowerLightSampler> lightSampler;
+    PowerLightSampler lightSampler;
 };
 
 // BDPTIntegrator Definition
@@ -484,7 +484,7 @@ class SPPMIntegrator : public Integrator {
 
   private:
     // SPPMIntegrator Private Methods
-    SampledSpectrum SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
+    SampledSpectrum SampleLd(const SurfaceInteraction &intr, const BSDF &bsdf,
                              SampledWavelengths &lambda, Sampler sampler,
                              LightSampler lightSampler) const;
 
