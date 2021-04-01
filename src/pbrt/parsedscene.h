@@ -197,21 +197,24 @@ struct LightSceneEntity : public TransformedSceneEntity {
 struct InstanceSceneEntity : public SceneEntity {
     InstanceSceneEntity() = default;
     InstanceSceneEntity(const std::string &name, FileLoc loc,
-                        const AnimatedTransform &renderFromInstanceAnim,
-                        const Transform *renderFromInstance)
+                        const AnimatedTransform &renderFromInstanceAnim)
         : SceneEntity(name, {}, loc),
-          renderFromInstanceAnim(renderFromInstanceAnim),
-          renderFromInstance(renderFromInstance) {}
+          renderFromInstanceAnim(new AnimatedTransform(renderFromInstanceAnim)) {}
+    InstanceSceneEntity(const std::string &name, FileLoc loc,
+                        const Transform *renderFromInstance)
+        : SceneEntity(name, {}, loc), renderFromInstance(renderFromInstance) {}
 
     std::string ToString() const {
         return StringPrintf(
             "[ InstanceSeneEntity name: %s loc: %s "
             "renderFromInstanceAnim: %s renderFromInstance: %s ]",
-            name, loc, renderFromInstanceAnim,
+            name, loc,
+            renderFromInstanceAnim ? renderFromInstanceAnim->ToString()
+                                   : std::string("nullptr"),
             renderFromInstance ? renderFromInstance->ToString() : std::string("nullptr"));
     }
 
-    AnimatedTransform renderFromInstanceAnim;
+    AnimatedTransform *renderFromInstanceAnim;
     const Transform *renderFromInstance;
 };
 
@@ -340,11 +343,13 @@ class ParsedScene : public SceneRepresentation {
     // ParsedScene Public Members
     SceneEntity film, sampler, integrator, filter, accelerator;
     CameraSceneEntity camera;
-    std::map<std::string, SceneEntity> namedMaterials;
+    std::vector<std::pair<std::string, SceneEntity>> namedMaterials;
+    std::set<std::string> namedMaterialNames;
     std::vector<SceneEntity> materials;
     std::map<std::string, TransformedSceneEntity> media;
-    std::map<std::string, TextureSceneEntity> floatTextures;
-    std::map<std::string, TextureSceneEntity> spectrumTextures;
+    std::vector<std::pair<std::string, TextureSceneEntity>> floatTextures;
+    std::vector<std::pair<std::string, TextureSceneEntity>> spectrumTextures;
+    std::set<std::string> floatTextureNames, spectrumTextureNames;
     std::vector<LightSceneEntity> lights;
     std::vector<SceneEntity> areaLights;
     std::vector<ShapeSceneEntity> shapes;
