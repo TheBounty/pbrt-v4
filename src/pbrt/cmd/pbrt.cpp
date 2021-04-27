@@ -81,12 +81,16 @@ Rendering options:
   --render-coord-sys <name>    Coordinate system to use for the scene when rendering,
                                where name is "camera", "cameraworld", or "world".
   --seed <n>                   Set random number generator seed. Default: 0.
+  --stats                      Print various statistics after rendering completes.
   --spp <n>                    Override number of pixel samples specified in scene
                                description file.
   --write-partial-images       Periodically write the current image to disk, rather
                                than waiting for the end of rendering. Default: disabled.
 
 Logging options:
+  --log-file <filename>        Filename to write logging messages to. Default: none;
+                               messages are printed to standard error. Implies
+                               --log-level verbose if specified.
   --log-level <level>          Log messages at or above this level, where <level>
                                is "verbose", "error", or "fatal". Default: "error".
 
@@ -177,6 +181,7 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "force-diffuse", &options.forceDiffuse, onError) ||
             ParseArg(&argv, "format", &format, onError) ||
             ParseArg(&argv, "log-level", &logLevel, onError) ||
+            ParseArg(&argv, "log-file", &options.logFile, onError) ||
             ParseArg(&argv, "mse-reference-image", &options.mseReferenceImage, onError) ||
             ParseArg(&argv, "mse-reference-out", &options.mseReferenceOutput, onError) ||
             ParseArg(&argv, "nthreads", &options.nThreads, onError) ||
@@ -187,6 +192,7 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "render-coord-sys", &renderCoordSys, onError) ||
             ParseArg(&argv, "seed", &options.seed, onError) ||
             ParseArg(&argv, "spp", &options.pixelSamples, onError) ||
+            ParseArg(&argv, "stats", &options.printStatistics, onError) ||
             ParseArg(&argv, "toply", &toPly, onError) ||
             ParseArg(&argv, "write-partial-images", &options.writePartialImages,
                      onError) ||
@@ -209,7 +215,7 @@ int main(int argc, char *argv[]) {
         LOG_VERBOSE("Running debug build");
         printf("*** DEBUG BUILD ***\n");
 #endif
-        printf("Copyright (c)1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.\n");
+        printf("Copyright (c)1998-2021 Matt Pharr, Wenzel Jakob, and Greg Humphreys.\n");
         printf("The source code to pbrt (but *not* the book contents) is covered "
                "by the Apache 2.0 License.\n");
         printf("See the file LICENSE.txt for the conditions of the license.\n");
