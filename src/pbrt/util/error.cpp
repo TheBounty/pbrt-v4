@@ -69,7 +69,7 @@ void Error(const FileLoc *loc, const char *message) {
 void ErrorExit(const FileLoc *loc, const char *message) {
     processError("Error", loc, message);
     DisconnectFromDisplayServer();
-#ifdef PBRT_IS_OSX
+#if defined(PBRT_IS_OSX) || defined(__MINGW32__)
     exit(1);
 #else
     std::quick_exit(1);
