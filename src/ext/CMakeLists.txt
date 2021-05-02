@@ -3,6 +3,8 @@ cmake_minimum_required (VERSION 3.12)
 
 if (MSVC)
   add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+  cmake_policy(SET CMP0104 NEW)
+  set(CMAKE_CUDA_ARCHITECTURES ${ARCH})
 endif ()
 
 ###########################################################################
