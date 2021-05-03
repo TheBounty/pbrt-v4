@@ -24,9 +24,8 @@
 #include <pbrt/util/pstd.h>
 
 #ifdef PBRT_BUILD_GPU_RENDERER
-#include <pbrt/gpu/init.h>
-#include <pbrt/gpu/launch.h>
-#include <pbrt/util/memory.h>
+#include <pbrt/gpu/util.h>
+#include <pbrt/gpu/memory.h>
 #endif
 
 #include <string>
@@ -319,11 +318,12 @@ int main(int argc, char *argv[]) {
     Image *pspec = alloc.new_object<Image>(
         PixelFormat::Float, Point2i(res, res),
         std::vector<std::string>{"power"}, nullptr, alloc);
-    ProgressReporter progress(nSets, "Analyzing", nSets == 1, options.useGPU);
-
 #ifdef PBRT_BUILD_GPU_RENDERER
+    ProgressReporter progress(nSets, "Analyzing", nSets == 1, options.useGPU);
     GPUInit();
     UPSInit(nPoints);
+#else
+    ProgressReporter progress(nSets, "Analyzing", nSets == 1);
 #endif
 
     int actualNSets = 0;
