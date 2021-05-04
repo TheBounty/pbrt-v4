@@ -10,7 +10,7 @@
 #include <pbrt/options.h>
 #ifdef PBRT_BUILD_GPU_RENDERER
 #include <pbrt/gpu/util.h>
-#endif
+#endif  // PBRT_BUILD_GPU_RENDERER
 #include <pbrt/util/parallel.h>
 #include <pbrt/util/pstd.h>
 
@@ -18,6 +18,7 @@
 #include <utility>
 
 #ifdef __CUDACC__
+
 #ifdef PBRT_IS_WINDOWS
 #if (__CUDA_ARCH__ < 700)
 #define PBRT_USE_LEGACY_CUDA_ATOMICS
@@ -31,7 +32,8 @@
 #ifndef PBRT_USE_LEGACY_CUDA_ATOMICS
 #include <cuda/atomic>
 #endif
-#endif // __CUDA_CC__
+
+#endif  // __CUDACC__
 
 namespace pbrt {
 
@@ -96,7 +98,7 @@ class WorkQueue : public SOA<WorkItem> {
 #endif
 #else
         return size.fetch_add(1, std::memory_order_relaxed);
-#endif // PBRT_IS_GPU_CODE
+#endif
     }
 
   private:
@@ -109,13 +111,13 @@ class WorkQueue : public SOA<WorkItem> {
 #endif
 #else
     std::atomic<int> size{0};
-#endif // PBRT_IS_GPU_CODE
+#endif  // PBRT_IS_GPU_CODE
 };
 
 // WorkQueue Inline Functions
 template <typename F, typename WorkItem>
 void ForAllQueued(const char *desc, WorkQueue<WorkItem> *q, int maxQueued, F &&func) {
-    if (Options->useGPU) {
+    if (Options->useGPU)
 #ifdef PBRT_BUILD_GPU_RENDERER
         GPUParallelFor(desc, maxQueued, [=] PBRT_GPU(int index) mutable {
             if (index >= q->Size())
@@ -125,10 +127,8 @@ void ForAllQueued(const char *desc, WorkQueue<WorkItem> *q, int maxQueued, F &&f
 #else
         LOG_FATAL("Options->useGPU was set without PBRT_BUILD_GPU_RENDERER enabled");
 #endif
-    } else
-        ParallelFor(0, q->Size(), [&](int index) {
-            func((*q)[index]);
-        });
+    else
+        ParallelFor(0, q->Size(), [&](int index) { func((*q)[index]); });
 }
 
 // MultiWorkQueue Definition

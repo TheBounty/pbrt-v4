@@ -7,7 +7,7 @@
 #ifdef PBRT_BUILD_GPU_RENDERER
 #include <pbrt/gpu/memory.h>
 #include <pbrt/gpu/util.h>
-#endif // PBRT_BUILD_GPU_RENDERER
+#endif  // PBRT_BUILD_GPU_RENDERER
 #include <pbrt/options.h>
 #include <pbrt/shapes.h>
 #include <pbrt/util/check.h>
@@ -56,8 +56,8 @@ void InitPBRT(const PBRTOptions &opt) {
     ParallelInit(nThreads);  // Threads must be launched before the
                              // profiler is initialized.
 
-#ifdef PBRT_BUILD_GPU_RENDERER
     if (Options->useGPU) {
+#ifdef PBRT_BUILD_GPU_RENDERER
         GPUInit();
 
         CUDA_CHECK(cudaMemcpyToSymbol(OptionsGPU, Options, sizeof(OptionsGPU)));
@@ -70,10 +70,10 @@ void InitPBRT(const PBRTOptions &opt) {
         InitBufferCaches(gpuMemoryAllocator);
         Triangle::Init(gpuMemoryAllocator);
         BilinearPatch::Init(gpuMemoryAllocator);
-    } else {
 #else
-    {
+        LOG_FATAL("Options::useGPU set with non-GPU build");
 #endif
+    } else {
         ColorEncoding::Init(Allocator{});
         // Before RGBColorSpace::Init!
         Spectra::Init(Allocator{});
