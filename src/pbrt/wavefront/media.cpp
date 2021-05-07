@@ -184,6 +184,7 @@ void WavefrontPathIntegrator::SampleMediumInteraction(int depth) {
             while (mix) {
                 SurfaceInteraction intr(w.pi, w.uv, w.wo, w.dpdus, w.dpdvs, w.dndus,
                                         w.dndvs, 0. /* time */, false /* flip normal */);
+                intr.faceIndex = w.faceIndex;
                 MaterialEvalContext ctx(intr);
                 material = mix->ChooseMaterial(BasicTextureEvaluator(), ctx);
                 mix = material.CastOrNullptr<MixMaterial>();
@@ -225,7 +226,7 @@ void WavefrontPathIntegrator::SampleMediumInteraction(int depth) {
             auto enqueue = [=](auto ptr) {
                 using Material = typename std::remove_reference_t<decltype(*ptr)>;
                 q->Push<MaterialEvalWorkItem<Material>>(MaterialEvalWorkItem<Material>{
-                    ptr, w.pi, w.n, w.ns, w.dpdus, w.dpdvs, w.dndus, w.dndvs, w.uv,
+                        ptr, w.pi, w.n, w.ns, w.dpdus, w.dpdvs, w.dndus, w.dndvs, w.uv, w.faceIndex,
                     lambda, w.anyNonSpecularBounces, -ray.d, w.pixelIndex, T_hat,
                     uniPathPDF, w.etaScale, w.mediumInterface, ray.time});
             };
@@ -303,7 +304,7 @@ void WavefrontPathIntegrator::SampleMediumInteraction(int depth) {
             // due to the way scattering events are scattered and because we're
             // sampling exactly from the phase function's distribution...
             SampledSpectrum rrBeta = T_hat * w.etaScale / uniPathPDF.Average();
-            if (rrBeta.MaxComponentValue() < 1 && depth > 1) {
+            if (rrBeta.MaxComponentValue() < 1 && depth >= 1) {
                 Float q = std::max<Float>(0, 1 - rrBeta.MaxComponentValue());
                 if (raySamples.indirect.rr < q) {
                     PBRT_DBG("RR terminated medium indirect with q %f pixel index %d\n",

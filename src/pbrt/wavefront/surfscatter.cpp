@@ -168,7 +168,9 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                 // Apply Russian roulette to indirect ray based on weighted path
                 // throughput
                 SampledSpectrum rrBeta = T_hat * etaScale / uniPathPDF.Average();
-                if (rrBeta.MaxComponentValue() < 1 && depth > 1) {
+                // Note: depth >= 1 here to match VolPathIntegrator (which increments
+                // depth earlier).
+                if (rrBeta.MaxComponentValue() < 1 && depth >= 1) {
                     Float q = std::max<Float>(0, 1 - rrBeta.MaxComponentValue());
                     if (raySamples.indirect.rr < q) {
                         T_hat = SampledSpectrum(0.f);
@@ -218,12 +220,13 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
             }
 
             // Sample light and enqueue shadow ray at intersection point
-            if (bsdf.IsNonSpecular()) {
+            BxDFFlags flags = bsdf.Flags();
+            if (IsNonSpecular(flags)) {
                 // Choose a light source using the _LightSampler_
                 LightSampleContext ctx(w.pi, w.n, ns);
-                if (bsdf.HasReflection() && !bsdf.HasTransmission())
+                if (IsReflective(flags) && !IsTransmissive(flags))
                     ctx.pi = OffsetRayOrigin(ctx.pi, w.n, wo);
-                else if (bsdf.HasTransmission() && !bsdf.HasReflection())
+                else if (IsTransmissive(flags) && IsReflective(flags))
                     ctx.pi = OffsetRayOrigin(ctx.pi, w.n, -wo);
                 pstd::optional<SampledLight> sampledLight =
                     lightSampler.Sample(ctx, raySamples.direct.uc);
