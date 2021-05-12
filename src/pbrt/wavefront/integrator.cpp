@@ -83,6 +83,7 @@ WavefrontPathIntegrator::WavefrontPathIntegrator(Allocator alloc, ParsedScene &s
 
     sampler = Sampler::Create(scene.sampler.name, scene.sampler.parameters,
                               film.FullResolution(), &scene.sampler.loc, alloc);
+    samplesPerPixel = sampler.SamplesPerPixel();
 
     Medium cameraMedium = findMedium(scene.camera.medium, &scene.camera.loc);
     camera = Camera::Create(scene.camera.name, scene.camera.parameters, cameraMedium,
@@ -285,7 +286,14 @@ WavefrontPathIntegrator::WavefrontPathIntegrator(Allocator alloc, ParsedScene &s
 
     if (haveMedia) {
         mediumSampleQueue = alloc.new_object<MediumSampleQueue>(maxQueueSize, alloc);
-        mediumScatterQueue = alloc.new_object<MediumScatterQueue>(maxQueueSize, alloc);
+
+        // TODO: in the presence of multiple PhaseFunction implementations,
+        // it could be worthwhile to see which are present in the scene and
+        // then initialize havePhase accordingly...
+        pstd::array<bool, PhaseFunction::NumTags()> havePhase;
+        havePhase.fill(true);
+        mediumScatterQueue =
+            alloc.new_object<MediumScatterQueue>(maxQueueSize, alloc, havePhase);
     }
 
     stats = alloc.new_object<Stats>(maxDepth, alloc);
@@ -340,7 +348,6 @@ Float WavefrontPathIntegrator::Render() {
     Timer timer;
     Vector2i resolution = film.PixelBounds().Diagonal();
     Bounds2i pixelBounds = film.PixelBounds();
-    int spp = sampler.SamplesPerPixel();
     // Launch thread to copy image for display server, if enabled
     RGB *displayRGB = nullptr, *displayRGBHost = nullptr;
     std::atomic<bool> exitCopyThread{false};
@@ -422,7 +429,7 @@ Float WavefrontPathIntegrator::Render() {
                 });
     }
 
-    int firstSampleIndex = 0, lastSampleIndex = spp;
+    int firstSampleIndex = 0, lastSampleIndex = samplesPerPixel;
     // Update sample index range based on debug start, if provided
     if (!Options->debugStart.empty()) {
         std::vector<int> values = SplitStringToInts(Options->debugStart, ',');

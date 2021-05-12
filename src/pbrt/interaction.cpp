@@ -5,6 +5,7 @@
 #include <pbrt/interaction.h>
 
 #include <pbrt/base/camera.h>
+#include <pbrt/cameras.h>
 #include <pbrt/lights.h>
 #include <pbrt/materials.h>
 #include <pbrt/options.h>
@@ -57,7 +58,7 @@ void SurfaceInteraction::ComputeDifferentials(const RayDifferential &ray, Camera
         dpdy = py - p();
 
     } else
-        camera.ApproximatedPdxy(*this, samplesPerPixel);
+        camera.Approximate_dp_dxy(p(), n, time, samplesPerPixel, &dpdx, &dpdy);
     // Estimate screen-space change in $(u,v)$
     Float a00 = Dot(dpdu, dpdu), a01 = Dot(dpdu, dpdv), a11 = Dot(dpdv, dpdv);
     Float invDet = 1 / (DifferenceOfProducts(a00, a11, a01, a01));
@@ -179,7 +180,7 @@ BSDF SurfaceInteraction::GetBSDF(const RayDifferential &ray, SampledWavelengths 
     if (bsdf && GetOptions().forceDiffuse) {
         // Override _bsdf_ with diffuse equivalent
         SampledSpectrum r = bsdf.rho(wo, {sampler.Get1D()}, {sampler.Get2D()});
-        bsdf = BSDF(n, shading.n, shading.dpdu, scratchBuffer.Alloc<IdealDiffuseBxDF>(r));
+        bsdf = BSDF(shading.n, shading.dpdu, scratchBuffer.Alloc<IdealDiffuseBxDF>(r));
     }
     return bsdf;
 }

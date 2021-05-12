@@ -117,6 +117,9 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                 intr.wo = w.wo;
                 intr.time = w.time;
 
+                camera.Approximate_dp_dxy(intr.p(), intr.n, intr.time, samplesPerPixel,
+                                          &intr.dpdx, &intr.dpdy);
+
                 // Estimate BSDF's albedo
                 constexpr int nRhoSamples = 16;
                 SampledSpectrum rho(0.f);
