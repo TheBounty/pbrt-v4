@@ -67,6 +67,8 @@ class WavefrontPathIntegrator {
 
     void TraceShadowRays(int depth);
     void SampleMediumInteraction(int depth);
+    template <typename PhaseFunction>
+    void SampleMediumScattering(int depth);
     void SampleSubsurface(int depth);
 
     void HandleEscapedRays(int depth);
@@ -146,7 +148,7 @@ class WavefrontPathIntegrator {
     pstd::vector<Light> *envLights;
     LightSampler lightSampler;
 
-    int maxDepth;
+    int maxDepth, samplesPerPixel;
     bool regularize;
 
     int scanlinesPerPass, maxQueueSize;
