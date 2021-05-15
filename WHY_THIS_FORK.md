@@ -14,18 +14,18 @@ learn about complex software application development.
 The purpose of this integration is to facilitate the creation of scenes, the definition of materials and render them easily.
 Although there is no defined roadmap, this is a list of the things that I would like to implement and their current state.
 
-#### Geomety:
+#### Geometry:
 
 The geometry is exported in the compact and efficient binary PLY format.
 
-- [x] Meshes.
-- [x] Extruded Curves
-- [x] MetaBalls ( as polygon mesh..)
-- [x] Instances
-- [x] Proxys ( as instances..)
-- [x] Hair ( as instantiated object)
-- [ ] Native hair(wip)
-- [ ] Point Clouds
+  - [x] Meshes.
+  - [x] Extruded Curves
+  - [x] MetaBalls ( as polygon mesh..)
+  - [x] Instances
+  - [x] Proxys ( as instances..)
+  - [x] Hair ( as instantiated object)
+  - [ ] Native hair(wip)
+  - [x] Point Clouds (as instantiated object)
 
 #### Materials:
 
@@ -35,8 +35,8 @@ Translate and implementing the materials using nodes is not a easy task.
 
 #### Textures:
 
-- [x] Bitmap
-- [ ] Procedural textures
+  - [x] Bitmap
+  - [ ] Procedural textures
 
 
 
