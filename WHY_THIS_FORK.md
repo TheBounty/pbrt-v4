@@ -19,7 +19,7 @@ Although there is no defined roadmap, this is a list of the things that I would 
 The geometry is exported in the compact and efficient binary PLY format.
 
 - [x] Meshes.
-- [x]  Extruded Curves
+- [x] Extruded Curves
 - [x] MetaBalls ( as polygon mesh..)
 - [x] Instances
 - [x] Proxys ( as instances..)
