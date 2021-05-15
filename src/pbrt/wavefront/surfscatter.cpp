@@ -41,41 +41,41 @@ static inline void rescale(SampledSpectrum &T_hat, SampledSpectrum &lightPathPDF
 
 // EvaluateMaterialCallback Definition
 struct EvaluateMaterialCallback {
-    int depth;
+    int wavefrontDepth;
     WavefrontPathIntegrator *integrator;
     // EvaluateMaterialCallback Public Methods
     template <typename Mtl>
     void operator()() {
         if constexpr (!std::is_same_v<Mtl, MixMaterial>)
-            integrator->EvaluateMaterialAndBSDF<Mtl>(depth);
+            integrator->EvaluateMaterialAndBSDF<Mtl>(wavefrontDepth);
     }
 };
 
 // WavefrontPathIntegrator Surface Scattering Methods
-void WavefrontPathIntegrator::EvaluateMaterialsAndBSDFs(int depth) {
-    ForEachType(EvaluateMaterialCallback{depth, this}, Material::Types());
+void WavefrontPathIntegrator::EvaluateMaterialsAndBSDFs(int wavefrontDepth) {
+    ForEachType(EvaluateMaterialCallback{wavefrontDepth, this}, Material::Types());
 }
 
 template <typename Mtl>
-void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(int depth) {
+void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(int wavefrontDepth) {
     if (haveBasicEvalMaterial[Material::TypeIndex<Mtl>()])
         EvaluateMaterialAndBSDF<Mtl>(BasicTextureEvaluator(), basicEvalMaterialQueue,
-                                     depth);
+                                     wavefrontDepth);
     if (haveUniversalEvalMaterial[Material::TypeIndex<Mtl>()])
         EvaluateMaterialAndBSDF<Mtl>(UniversalTextureEvaluator(),
-                                     universalEvalMaterialQueue, depth);
+                                     universalEvalMaterialQueue, wavefrontDepth);
 }
 
 template <typename Mtl, typename TextureEvaluator>
 void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                                                       MaterialEvalQueue *evalQueue,
-                                                      int depth) {
+                                                      int wavefrontDepth) {
     // Construct _name_ for material/texture evaluator kernel
     std::string name = StringPrintf(
         "%s + BxDF Eval (%s tex)", Mtl::Name(),
         std::is_same_v<TextureEvaluator, BasicTextureEvaluator> ? "Basic" : "Universal");
 
-    RayQueue *nextRayQueue = NextRayQueue(depth);
+    RayQueue *nextRayQueue = NextRayQueue(wavefrontDepth);
     ForAllQueued(
         name.c_str(), evalQueue->Get<MaterialEvalWorkItem<Mtl>>(), maxQueueSize,
         PBRT_CPU_GPU_LAMBDA(const MaterialEvalWorkItem<Mtl> w) {
@@ -109,34 +109,38 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                 bsdf.Regularize();
 
             // Initialize _VisibleSurface_ at first intersection if necessary
-            if (depth == 0 && initializeVisibleSurface) {
-                SurfaceInteraction intr;
-                intr.pi = w.pi;
-                intr.n = w.n;
-                intr.shading.n = ns;
-                intr.wo = w.wo;
-                intr.time = w.time;
+            if (w.depth == 0 && initializeVisibleSurface) {
+                SurfaceInteraction isect;
+                isect.pi = w.pi;
+                isect.n = w.n;
+                isect.shading.n = ns;
+                isect.wo = w.wo;
+                isect.time = w.time;
 
-                camera.Approximate_dp_dxy(intr.p(), intr.n, intr.time, samplesPerPixel,
-                                          &intr.dpdx, &intr.dpdy);
+                camera.Approximate_dp_dxy(isect.p(), isect.n, isect.time, samplesPerPixel,
+                                          &isect.dpdx, &isect.dpdy);
 
                 // Estimate BSDF's albedo
+                // Define sample arrays _ucRho_ and _uRho_ for reflectance estimate
                 constexpr int nRhoSamples = 16;
-                SampledSpectrum rho(0.f);
-                for (int i = 0; i < nRhoSamples; ++i) {
-                    // Generate sample for hemispherical-directional reflectance
-                    Float uc = RadicalInverse(0, i + 1);
-                    Point2f u(RadicalInverse(1, i + 1), RadicalInverse(2, i + 1));
+                const Float ucRho[nRhoSamples] = {
+                    0.75741637, 0.37870818, 0.7083487, 0.18935409, 0.9149363, 0.35417435,
+                    0.5990858,  0.09467703, 0.8578725, 0.45746812, 0.686759,  0.17708716,
+                    0.9674518,  0.2995429,  0.5083201, 0.047338516};
+                const Point2f uRho[nRhoSamples] = {
+                    Point2f(0.855985, 0.570367), Point2f(0.381823, 0.851844),
+                    Point2f(0.285328, 0.764262), Point2f(0.733380, 0.114073),
+                    Point2f(0.542663, 0.344465), Point2f(0.127274, 0.414848),
+                    Point2f(0.964700, 0.947162), Point2f(0.594089, 0.643463),
+                    Point2f(0.095109, 0.170369), Point2f(0.825444, 0.263359),
+                    Point2f(0.429467, 0.454469), Point2f(0.244460, 0.816459),
+                    Point2f(0.756135, 0.731258), Point2f(0.516165, 0.152852),
+                    Point2f(0.180888, 0.214174), Point2f(0.898579, 0.503897)};
 
-                    // Estimate one term of $\rho_\roman{hd}$
-                    pstd::optional<BSDFSample> bs = bsdf.Sample_f<BxDF>(w.wo, uc, u);
-                    if (bs)
-                        rho += bs->f * AbsDot(bs->wi, ns) / bs->pdf;
-                }
-                SampledSpectrum albedo = rho / nRhoSamples;
+                SampledSpectrum albedo = bsdf.rho(isect.wo, ucRho, uRho);
 
                 pixelSampleState.visibleSurface[w.pixelIndex] =
-                    VisibleSurface(intr, camera.GetCameraTransform(), albedo, lambda);
+                    VisibleSurface(isect, camera.GetCameraTransform(), albedo, lambda);
             }
 
             // Sample BSDF and enqueue indirect ray at intersection point
@@ -173,7 +177,7 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                 SampledSpectrum rrBeta = T_hat * etaScale / uniPathPDF.Average();
                 // Note: depth >= 1 here to match VolPathIntegrator (which increments
                 // depth earlier).
-                if (rrBeta.MaxComponentValue() < 1 && depth >= 1) {
+                if (rrBeta.MaxComponentValue() < 1 && w.depth >= 1) {
                     Float q = std::max<Float>(0, 1 - rrBeta.MaxComponentValue());
                     if (raySamples.indirect.rr < q) {
                         T_hat = SampledSpectrum(0.f);
@@ -189,7 +193,8 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                         w.material->HasSubsurfaceScattering()) {
                         bssrdfEvalQueue->Push(w.material, lambda, T_hat, uniPathPDF,
                                               Point3f(w.pi), wo, w.n, ns, dpdus, w.uv,
-                                              w.mediumInterface, etaScale, w.pixelIndex);
+                                              w.depth, w.mediumInterface, etaScale,
+                                              w.pixelIndex);
                     } else {
                         // Initialize spawned ray and enqueue for next ray depth
                         Ray ray = SpawnRay(w.pi, w.n, w.time, wi);
@@ -203,16 +208,16 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                         // NOTE: slightly different than context below. Problem?
                         LightSampleContext ctx(w.pi, w.n, ns);
                         nextRayQueue->PushIndirectRay(
-                            ray, ctx, T_hat, uniPathPDF, lightPathPDF, lambda, etaScale,
-                            bsdfSample->IsSpecular(), anyNonSpecularBounces,
-                            w.pixelIndex);
+                            ray, w.depth + 1, ctx, T_hat, uniPathPDF, lightPathPDF,
+                            lambda, etaScale, bsdfSample->IsSpecular(),
+                            anyNonSpecularBounces, w.pixelIndex);
 
                         PBRT_DBG(
                             "Spawned indirect ray at depth %d from w.index %d. "
                             "Specular %d T_Hat %f %f %f %f uniPathPDF %f %f %f %f "
                             "lightPathPDF %f "
                             "%f %f %f T_hat/uniPathPDF %f %f %f %f\n",
-                            depth + 1, w.pixelIndex, int(bsdfSample->IsSpecular()),
+                            w.depth + 1, w.pixelIndex, int(bsdfSample->IsSpecular()),
                             T_hat[0], T_hat[1], T_hat[2], T_hat[3], uniPathPDF[0],
                             uniPathPDF[1], uniPathPDF[2], uniPathPDF[3], lightPathPDF[0],
                             lightPathPDF[1], lightPathPDF[2], lightPathPDF[3],
@@ -256,7 +261,7 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                 PBRT_DBG(
                     "me index %d depth %d T_hat %f %f %f %f f %f %f %f %f ls.L %f %f %f "
                     "%f ls.pdf %f\n",
-                    w.pixelIndex, depth, T_hat[0], T_hat[1], T_hat[2], T_hat[3], f[0],
+                    w.pixelIndex, w.depth, T_hat[0], T_hat[1], T_hat[2], T_hat[3], f[0],
                     f[1], f[2], f[3], ls->L[0], ls->L[1], ls->L[2], ls->L[3], ls->pdf);
 
                 Float lightPDF = ls->pdf * sampledLight->pdf;
@@ -280,7 +285,7 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(TextureEvaluator texEval,
                 PBRT_DBG(
                     "w.index %d spawned shadow ray depth %d Ld %f %f %f %f "
                     "new T_hat %f %f %f %f T_hat/uni %f %f %f %f Ld/uni %f %f %f %f\n",
-                    w.pixelIndex, depth, Ld[0], Ld[1], Ld[2], Ld[3], T_hat[0], T_hat[1],
+                    w.pixelIndex, w.depth, Ld[0], Ld[1], Ld[2], Ld[3], T_hat[0], T_hat[1],
                     T_hat[2], T_hat[3], SafeDiv(T_hat, uniPathPDF)[0],
                     SafeDiv(T_hat, uniPathPDF)[1], SafeDiv(T_hat, uniPathPDF)[2],
                     SafeDiv(T_hat, uniPathPDF)[3], SafeDiv(Ld, uniPathPDF)[0],
