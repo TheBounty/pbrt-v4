@@ -19,24 +19,24 @@ Although there is no defined roadmap, this is a list of the things that I would 
 The geometry is exported in the compact and efficient binary PLY format.
 
   - [x] Meshes.
-  - [x] Extruded Curves
+  - [x] Extruded Curves ( as polygon mesh..)
   - [x] MetaBalls ( as polygon mesh..)
   - [x] Instances
   - [x] Proxys ( as instances..)
   - [x] Hair ( as instantiated object)
-  - [ ] Native hair(wip)
-  - [x] Point Clouds (as instantiated object)
+  - [x] Native hair(basic implementation)
+  - [ ] Point Clouds (as instantiated object. wip)
 
 #### Materials:
 
 Almost all PBRT materials are currently supported, although some use the default values.
 
-Translate and implementing the materials using nodes is not a easy task.
+Translate and implementing the materials using nodes is not a easy task. But anyway is work in progress..
 
 #### Textures:
 
   - [x] Bitmap
-  - [ ] Procedural textures
+  - [ ] Marble(wip)
 
 
 
