@@ -27,17 +27,16 @@ class CPUAggregate : public WavefrontAggregate {
     CPUAggregate(ParsedScene &scene, Allocator alloc, NamedTextures &textures,
              const std::map<int, pstd::vector<Light> *> &shapeIndexToAreaLights,
              const std::map<std::string, Medium> &media,
-             pstd::array<bool, Material::NumTags()> *haveBasicEvalMaterial,
-             pstd::array<bool, Material::NumTags()> *haveUniversalEvalMaterial,
-             bool *haveSubsurface);
+             const std::map<std::string, pbrt::Material> &namedMaterials,
+             const std::vector<pbrt::Material> &materials);
 
     Bounds3f Bounds() const { return aggregate.Bounds(); }
 
     void IntersectClosest(
-        int maxRays, EscapedRayQueue *escapedRayQueue,
+        int maxRays, const RayQueue *rayQueue, EscapedRayQueue *escapedRayQueue,
         HitAreaLightQueue *hitAreaLightQueue, MaterialEvalQueue *basicEvalMaterialQueue,
         MaterialEvalQueue *universalEvalMaterialQueue,
-        MediumSampleQueue *mediumSampleQueue, RayQueue *rayQueue, RayQueue *nextRayQueue) const;
+        MediumSampleQueue *mediumSampleQueue, RayQueue *nextRayQueue) const;
 
     void IntersectShadow(int maxRays, ShadowRayQueue *shadowRayQueue,
                          SOA<PixelSampleState> *pixelSampleState) const;
