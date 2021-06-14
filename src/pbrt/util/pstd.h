@@ -347,13 +347,13 @@ class span {
 
     // Explicit reference constructor for a mutable `span<T>` type. Can be
     // replaced with Makespan() to infer the type parameter.
-    template <typename V, typename = EnableIfConvertibleFrom<V>,
-              typename = EnableIfMutableView<V>>
+    template <typename V, typename X = EnableIfConvertibleFrom<V>,
+              typename Y = EnableIfMutableView<V>>
     PBRT_CPU_GPU explicit span(V &v) noexcept : span(v.data(), v.size()) {}
 
     // Implicit reference constructor for a read-only `span<const T>` type
-    template <typename V, typename = EnableIfConvertibleFrom<V>,
-              typename = EnableIfConstView<V>>
+    template <typename V, typename X = EnableIfConvertibleFrom<V>,
+              typename Y = EnableIfConstView<V>>
     PBRT_CPU_GPU constexpr span(const V &v) noexcept : span(v.data(), v.size()) {}
 
     PBRT_CPU_GPU
@@ -1135,6 +1135,22 @@ PBRT_CPU_GPU inline double ceil(double arg) {
     return ::ceil(arg);
 #else
     return std::ceil(arg);
+#endif
+}
+
+PBRT_CPU_GPU inline float round(float arg) {
+#ifdef PBRT_IS_GPU_CODE
+    return ::roundf(arg);
+#else
+    return std::round(arg);
+#endif
+}
+
+PBRT_CPU_GPU inline double round(double arg) {
+#ifdef PBRT_IS_GPU_CODE
+    return ::round(arg);
+#else
+    return std::round(arg);
 #endif
 }
 
