@@ -101,9 +101,8 @@ PBRT_CPU_GPU inline int SampleDiscrete(pstd::span<const Float> weights, Float u,
     }
 
     // Compute PMF and remapped _u_ value, if necessary
-    Float p = weights[offset] / sumWeights;
     if (pmf != nullptr)
-        *pmf = p;
+        *pmf = weights[offset] / sumWeights;
     if (uRemapped != nullptr)
         *uRemapped = std::min((up - sum) / weights[offset], OneMinusEpsilon);
 
@@ -151,8 +150,8 @@ PBRT_CPU_GPU inline Point2f SampleBilinear(Point2f u, pstd::span<const Float> w)
 }
 
 PBRT_CPU_GPU inline Point2f InvertBilinearSample(Point2f p, pstd::span<const Float> w) {
-    return {InvertLinearSample(p[0], Lerp(p[1], w[0], w[2]), Lerp(p[1], w[1], w[3])),
-            InvertLinearSample(p[1], w[0] + w[1], w[2] + w[3])};
+    return {InvertLinearSample(p.x, Lerp(p.y, w[0], w[2]), Lerp(p.y, w[1], w[3])),
+            InvertLinearSample(p.y, w[0] + w[1], w[2] + w[3])};
 }
 
 PBRT_CPU_GPU inline Float XYZMatchingPDF(Float lambda) {

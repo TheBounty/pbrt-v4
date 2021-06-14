@@ -247,7 +247,7 @@ void RayIntegrator::EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler
         // Double check that the ray's direction is normalized.
         DCHECK_GT(Length(cameraRay->ray.d), .999f);
         DCHECK_LT(Length(cameraRay->ray.d), 1.001f);
-        // Scale camera ray differentials based on sampling rate
+        // Scale camera ray differentials based on image sampling rate
         Float rayDiffScale =
             std::max<Float>(.125f, 1 / std::sqrt((Float)sampler.SamplesPerPixel()));
         if (!Options->disablePixelJitter)
@@ -3509,7 +3509,7 @@ void FunctionIntegrator::Render() {
 
     prog.Done();
 
-    WriteFile(outputFilename, result);
+    WriteFileContents(outputFilename, result);
 }
 
 std::string FunctionIntegrator::ToString() const {
