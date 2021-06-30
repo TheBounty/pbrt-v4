@@ -89,20 +89,18 @@ class Interaction {
     std::string ToString() const;
 
     PBRT_CPU_GPU
-    Point3f OffsetRayOrigin(const Vector3f &w) const {
-        return pbrt::OffsetRayOrigin(pi, n, w);
-    }
+    Point3f OffsetRayOrigin(Vector3f w) const { return pbrt::OffsetRayOrigin(pi, n, w); }
 
     PBRT_CPU_GPU
-    Point3f OffsetRayOrigin(const Point3f &pt) const { return OffsetRayOrigin(pt - p()); }
+    Point3f OffsetRayOrigin(Point3f pt) const { return OffsetRayOrigin(pt - p()); }
 
     PBRT_CPU_GPU
-    RayDifferential SpawnRay(const Vector3f &d) const {
+    RayDifferential SpawnRay(Vector3f d) const {
         return RayDifferential(OffsetRayOrigin(d), d, time, GetMedium(d));
     }
 
     PBRT_CPU_GPU
-    Ray SpawnRayTo(const Point3f &p2) const {
+    Ray SpawnRayTo(Point3f p2) const {
         Ray r = pbrt::SpawnRayTo(pi, n, time, p2);
         r.medium = GetMedium(r.d);
         return r;
@@ -117,7 +115,7 @@ class Interaction {
 
     PBRT_CPU_GPU
     Medium GetMedium(const Vector3f &w) const {
-        if (mediumInterface != nullptr)
+        if (mediumInterface)
             return Dot(w, n) > 0 ? mediumInterface->outside : mediumInterface->inside;
         return medium;
     }
