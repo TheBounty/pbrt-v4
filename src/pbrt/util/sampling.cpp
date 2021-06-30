@@ -27,7 +27,7 @@ namespace pbrt {
 // Sampling Function Definitions
 pstd::array<Float, 3> SampleSphericalTriangle(const pstd::array<Point3f, 3> &v, Point3f p,
                                               Point2f u, Float *pdf) {
-    if (pdf != nullptr)
+    if (pdf)
         *pdf = 0;
     // Compute vectors _a_, _b_, and _c_ to spherical triangle vertices
     Vector3f a(v[0] - p), b(v[1] - p), c(v[2] - p);
@@ -54,7 +54,7 @@ pstd::array<Float, 3> SampleSphericalTriangle(const pstd::array<Point3f, 3> &v, 
     // Uniformly sample triangle area $A$ to compute $A'$
     Float A_pi = alpha + beta + gamma;
     Float Ap_pi = Lerp(u[0], Pi, A_pi);
-    if (pdf != nullptr) {
+    if (pdf) {
         Float A = A_pi - Pi;
         *pdf = (A <= 0) ? 0 : 1 / A;
     }
@@ -65,7 +65,7 @@ pstd::array<Float, 3> SampleSphericalTriangle(const pstd::array<Point3f, 3> &v, 
     Float cosPhi = std::cos(Ap_pi) * cosAlpha + std::sin(Ap_pi) * sinAlpha;
     Float k1 = cosPhi + cosAlpha;
     Float k2 = sinPhi - sinAlpha * Dot(a, b) /* cos c */;
-    Float cosBp = ((DifferenceOfProducts(k2, cosPhi, k1, sinPhi)) * cosAlpha + k2) /
+    Float cosBp = (k2 + (DifferenceOfProducts(k2, cosPhi, k1, sinPhi)) * cosAlpha) /
                   ((SumOfProducts(k2, sinPhi, k1, cosPhi)) * sinAlpha);
     // Happens if the triangle basically covers the entire hemisphere.
     // We currently depend on calling code to detect this case, which
@@ -82,7 +82,7 @@ pstd::array<Float, 3> SampleSphericalTriangle(const pstd::array<Point3f, 3> &v, 
     Float sinTheta = SafeSqrt(1 - Sqr(cosTheta));
     Vector3f w = cosTheta * b + sinTheta * Normalize(GramSchmidt(cp, b));
     // Find barycentric coordinates for sampled direction _w_
-    Vector3f e1(v[1] - v[0]), e2(v[2] - v[0]);
+    Vector3f e1 = v[1] - v[0], e2 = v[2] - v[0];
     Vector3f s1 = Cross(w, e2);
     Float divisor = Dot(s1, e1);
     CHECK_RARE(1e-6, divisor == 0);
@@ -92,7 +92,7 @@ pstd::array<Float, 3> SampleSphericalTriangle(const pstd::array<Point3f, 3> &v, 
         return {1.f / 3.f, 1.f / 3.f, 1.f / 3.f};
     }
     Float invDivisor = 1 / divisor;
-    Vector3f s(p - v[0]);
+    Vector3f s = p - v[0];
     Float b1 = Dot(s, s1) * invDivisor;
     Float b2 = Dot(w, Cross(s, e1)) * invDivisor;
 
@@ -188,11 +188,11 @@ Point3f SampleSphericalRectangle(Point3f pRef, Point3f s, Vector3f ex, Vector3f 
     Float solidAngle = g0 + g1 + g2 + g3 - 2 * Pi;
     CHECK_RARE(1e-5, solidAngle <= 0);
     if (solidAngle <= 0) {
-        if (pdf != nullptr)
+        if (pdf)
             *pdf = 0;
         return Point3f(s + u[0] * ex + u[1] * ey);
     }
-    if (pdf != nullptr)
+    if (pdf)
         *pdf = std::max<Float>(0, 1 / solidAngle);
     if (solidAngle < 1e-3)
         return Point3f(s + u[0] * ex + u[1] * ey);
@@ -406,9 +406,9 @@ Float SampleCatmullRom(pstd::span<const Float> nodes, pstd::span<const Float> f,
     };
     Float t = NewtonBisection(0, 1, eval);
 
-    if (fval != nullptr)
+    if (fval)
         *fval = fhat;
-    if (pdf != nullptr)
+    if (pdf)
         *pdf = fhat / F.back();
     return x0 + width * t;
 }
@@ -468,9 +468,9 @@ Float SampleCatmullRom2D(pstd::span<const Float> nodes1, pstd::span<const Float>
     };
     Float t = NewtonBisection(0, 1, eval);
 
-    if (fval != nullptr)
+    if (fval)
         *fval = fhat;
-    if (pdf != nullptr)
+    if (pdf)
         *pdf = fhat / maximum;
     return x0 + width * t;
 }
