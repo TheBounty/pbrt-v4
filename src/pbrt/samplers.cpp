@@ -29,7 +29,7 @@ std::string Sampler::ToString() const {
 }
 
 // HaltonSampler Method Definitions
-HaltonSampler::HaltonSampler(int samplesPerPixel, const Point2i &fullRes,
+HaltonSampler::HaltonSampler(int samplesPerPixel, Point2i fullRes,
                              RandomizeStrategy randomize, int seed, Allocator alloc)
     : samplesPerPixel(samplesPerPixel), randomize(randomize) {
     if (randomize == RandomizeStrategy::PermuteDigits)
@@ -71,7 +71,7 @@ std::string HaltonSampler::ToString() const {
 }
 
 HaltonSampler *HaltonSampler::Create(const ParameterDictionary &parameters,
-                                     const Point2i &fullResolution, const FileLoc *loc,
+                                     Point2i fullResolution, const FileLoc *loc,
                                      Allocator alloc) {
     int nsamp = parameters.GetOneInt("pixelsamples", 16);
     if (Options->pixelSamples)
@@ -290,12 +290,13 @@ IndependentSampler *IndependentSampler::Create(const ParameterDictionary &parame
 std::string SobolSampler::ToString() const {
     return StringPrintf("[ SobolSampler pixel: %s dimension: %d "
                         "samplesPerPixel: %d scale: %d sobolIndex: %d "
-                        "randomize: %s ]",
-                        pixel, dimension, samplesPerPixel, scale, sobolIndex, randomize);
+                        "seed: %d randomize: %s ]",
+                        pixel, dimension, samplesPerPixel, scale, sobolIndex, seed,
+                        randomize);
 }
 
 SobolSampler *SobolSampler::Create(const ParameterDictionary &parameters,
-                                   const Point2i &fullResolution, const FileLoc *loc,
+                                   Point2i fullResolution, const FileLoc *loc,
                                    Allocator alloc) {
     int nsamp = parameters.GetOneInt("pixelsamples", 16);
     if (Options->pixelSamples)
@@ -316,7 +317,9 @@ SobolSampler *SobolSampler::Create(const ParameterDictionary &parameters,
     else
         ErrorExit(loc, "%s: unknown randomization strategy given to SobolSampler", s);
 
-    return alloc.new_object<SobolSampler>(nsamp, fullResolution, randomizer);
+    int seed = parameters.GetOneInt("seed", Options->seed);
+
+    return alloc.new_object<SobolSampler>(nsamp, fullResolution, randomizer, seed);
 }
 
 // StratifiedSampler Method Definitions

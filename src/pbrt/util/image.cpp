@@ -15,7 +15,10 @@
 #include <pbrt/util/pstd.h>
 #include <pbrt/util/string.h>
 
+// No need, since we need to do our own file i/o to support UTF-8 filenames.
+#define LODEPNG_NO_COMPILE_DISK
 #include <lodepng/lodepng.h>
+
 #ifndef PBRT_IS_GPU_CODE
 // Work around conflict with "half".
 #include <ImfChannelList.h>
@@ -191,6 +194,24 @@ pstd::vector<Image> Image::GeneratePyramid(Image image, WrapMode2D wrapMode,
     pyramid[nLevels - 1].CopyRectIn({{0, 0}, {1, 1}},
                                     {image.p32.data(), size_t(nChannels)});
     return pyramid;
+}
+
+bool Image::HasAnyInfinitePixels() const {
+    for (int y = 0; y < resolution.y; ++y)
+        for (int x = 0; x < resolution.x; ++x)
+            for (int c = 0; c < NChannels(); ++c)
+                if (IsInf(GetChannel({x, y}, c)))
+                    return true;
+    return false;
+}
+
+bool Image::HasAnyNaNPixels() const {
+    for (int y = 0; y < resolution.y; ++y)
+        for (int x = 0; x < resolution.x; ++x)
+            for (int c = 0; c < NChannels(); ++c)
+                if (IsNaN(GetChannel({x, y}, c)))
+                    return true;
+    return false;
 }
 
 Image Image::GaussianFilter(const ImageChannelDesc &desc, int halfWidth,
@@ -1310,19 +1331,22 @@ std::string Image::ToString() const {
                         encoding ? encoding.ToString().c_str() : "(nullptr)");
 }
 
-bool Image::WritePNG(const std::string &name, const ImageMetadata &metadata) const {
+bool Image::WritePNG(const std::string &filename, const ImageMetadata &metadata) const {
     unsigned int error = 0;
     int nOutOfGamut = 0;
 
+    unsigned char *png;
+    size_t pngSize;
+
     if (format == PixelFormat::U256) {
         if (NChannels() == 1)
-            error = lodepng_encode_file(name.c_str(), p8.data(), resolution.x,
-                                        resolution.y, LCT_GREY, 8 /* bitdepth */);
+            error = lodepng_encode_memory(&png, &pngSize, p8.data(), resolution.x,
+                                          resolution.y, LCT_GREY, 8 /* bitdepth */);
         else if (NChannels() == 3)
             // TODO: it would be nice to store the color encoding used in the
             // PNG metadata...
-            error = lodepng_encode24_file(name.c_str(), p8.data(), resolution.x,
-                                          resolution.y);
+            error = lodepng_encode_memory(&png, &pngSize, p8.data(), resolution.x,
+                                          resolution.y, LCT_RGB, 8);
         else
             LOG_FATAL("Unhandled channel count in WritePNG(): %d", NChannels());
     } else if (NChannels() == 3) {
@@ -1340,8 +1364,8 @@ bool Image::WritePNG(const std::string &name, const ImageMetadata &metadata) con
                     rgb8[3 * (y * resolution.x + x) + c] = LinearToSRGB8(v, dither);
                 }
 
-        error =
-            lodepng_encode24_file(name.c_str(), rgb8.get(), resolution.x, resolution.y);
+        error = lodepng_encode_memory(&png, &pngSize, rgb8.get(), resolution.x,
+                                      resolution.y, LCT_RGB, 8);
     } else if (NChannels() == 1) {
         std::unique_ptr<uint8_t[]> y8 =
             std::make_unique<uint8_t[]>(resolution.x * resolution.y);
@@ -1354,19 +1378,24 @@ bool Image::WritePNG(const std::string &name, const ImageMetadata &metadata) con
                 y8[y * resolution.x + x] = LinearToSRGB8(v, dither);
             }
 
-        error = lodepng_encode_file(name.c_str(), y8.get(), resolution.x, resolution.y,
-                                    LCT_GREY, 8 /* bitdepth */);
+        error = lodepng_encode_memory(&png, &pngSize, y8.get(), resolution.x,
+                                      resolution.y, LCT_GREY, 8 /* bitdepth */);
     }
 
     if (nOutOfGamut > 0)
-        Warning("%s: %d out of gamut pixel channels clamped to [0,1].", name,
+        Warning("%s: %d out of gamut pixel channels clamped to [0,1].", filename,
                 nOutOfGamut);
 
-    if (error != 0) {
-        Error("Error writing PNG \"%s\": %s", name, lodepng_error_text(error));
-        return false;
-    }
-    return true;
+    if (error == 0) {
+        std::string encodedPNG(png, png + pngSize);
+        if (!WriteFileContents(filename, encodedPNG))
+            Error("%s: error writing PNG.", filename);
+    } else
+        Error("%s: %s", filename, lodepng_error_text(error));
+
+    free(png);
+
+    return error == 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////
