@@ -37,6 +37,7 @@ struct TextureEvalContext {
         : p(si.p()),
           dpdx(si.dpdx),
           dpdy(si.dpdy),
+          n(si.n),
           uv(si.uv),
           dudx(si.dudx),
           dudy(si.dudy),
@@ -44,12 +45,12 @@ struct TextureEvalContext {
           dvdy(si.dvdy),
           faceIndex(si.faceIndex) {}
     PBRT_CPU_GPU
-    TextureEvalContext(const Point3f &p, const Vector3f &dpdx, const Vector3f &dpdy,
-                       const Point2f &uv, Float dudx, Float dudy, Float dvdx, Float dvdy,
-                       int faceIndex)
+    TextureEvalContext(Point3f p, Vector3f dpdx, Vector3f dpdy, Normal3f n, Point2f uv,
+                       Float dudx, Float dudy, Float dvdx, Float dvdy, int faceIndex)
         : p(p),
           dpdx(dpdx),
           dpdy(dpdy),
+          n(n),
           uv(uv),
           dudx(dudx),
           dudy(dudy),
@@ -61,6 +62,7 @@ struct TextureEvalContext {
 
     Point3f p;
     Vector3f dpdx, dpdy;
+    Normal3f n;
     Point2f uv;
     Float dudx = 0, dudy = 0, dvdx = 0, dvdy = 0;
     int faceIndex = 0;
@@ -166,7 +168,7 @@ class CylindricalMapping2D {
     // CylindricalMapping2D Private Methods
     PBRT_CPU_GPU
     Point2f Cylinder(const Point3f &p) const {
-        Vector3f vec = Normalize(textureFromRender(p) - Point3f(0, 0, 0));
+        Vector3f vec = textureFromRender(p) - Point3f(0, 0, 0);
         return Point2f((Pi + std::atan2(vec.y, vec.x)) * Inv2Pi, vec.z);
     }
 
@@ -178,12 +180,13 @@ class CylindricalMapping2D {
 class PlanarMapping2D {
   public:
     // PlanarMapping2D Public Methods
-    PlanarMapping2D(Vector3f vs, Vector3f vt, Float ds, Float dt)
-        : vs(vs), vt(vt), ds(ds), dt(dt) {}
+    PlanarMapping2D(const Transform &textureFromRender, Vector3f vs, Vector3f vt,
+                    Float ds, Float dt)
+        : textureFromRender(textureFromRender), vs(vs), vt(vt), ds(ds), dt(dt) {}
 
     PBRT_CPU_GPU
     Point2f Map(TextureEvalContext ctx, Vector2f *dstdx, Vector2f *dstdy) const {
-        Vector3f vec(ctx.p);
+        Vector3f vec(textureFromRender(ctx.p));
         *dstdx = Vector2f(Dot(ctx.dpdx, vs), Dot(ctx.dpdx, vt));
         *dstdy = Vector2f(Dot(ctx.dpdy, vs), Dot(ctx.dpdy, vt));
         return {ds + Dot(vec, vs), dt + Dot(vec, vt)};
@@ -192,6 +195,7 @@ class PlanarMapping2D {
     std::string ToString() const;
 
   private:
+    Transform textureFromRender;
     Vector3f vs, vt;
     Float ds, dt;
 };
@@ -833,6 +837,36 @@ class FloatMixTexture {
     FloatTexture amount;
 };
 
+// FloatDirectionMixTexture Definition
+class FloatDirectionMixTexture {
+  public:
+    // FloatDirectionMixTexture Public Methods
+    FloatDirectionMixTexture(FloatTexture tex1, FloatTexture tex2, Vector3f dir)
+        : tex1(tex1), tex2(tex2), dir(dir) {}
+
+    PBRT_CPU_GPU
+    Float Evaluate(TextureEvalContext ctx) const {
+        Float amt = AbsDot(ctx.n, dir);
+        Float t1 = 0, t2 = 0;
+        if (amt != 0)
+            t1 = tex1.Evaluate(ctx);
+        if (amt != 1)
+            t2 = tex2.Evaluate(ctx);
+        return amt * t1 + (1 - amt) * t2;
+    }
+
+    static FloatDirectionMixTexture *Create(const Transform &renderFromTexture,
+                                            const TextureParameterDictionary &parameters,
+                                            const FileLoc *loc, Allocator alloc);
+
+    std::string ToString() const;
+
+  private:
+    // FloatDirectionMixTexture Private Members
+    FloatTexture tex1, tex2;
+    Vector3f dir;
+};
+
 // SpectrumMixTexture Definition
 class SpectrumMixTexture {
   public:
@@ -860,6 +894,36 @@ class SpectrumMixTexture {
   private:
     SpectrumTexture tex1, tex2;
     FloatTexture amount;
+};
+
+// SpectrumDirectionMixTexture Definition
+class SpectrumDirectionMixTexture {
+  public:
+    // SpectrumDirectionMixTexture Public Methods
+    SpectrumDirectionMixTexture(SpectrumTexture tex1, SpectrumTexture tex2, Vector3f dir)
+        : tex1(tex1), tex2(tex2), dir(dir) {}
+
+    PBRT_CPU_GPU
+    SampledSpectrum Evaluate(TextureEvalContext ctx, SampledWavelengths lambda) const {
+        Float amt = AbsDot(ctx.n, dir);
+        SampledSpectrum t1, t2;
+        if (amt != 0)
+            t1 = tex1.Evaluate(ctx, lambda);
+        if (amt != 1)
+            t2 = tex2.Evaluate(ctx, lambda);
+        return amt * t1 + (1 - amt) * t2;
+    }
+
+    static SpectrumDirectionMixTexture *Create(
+        const Transform &renderFromTexture, const TextureParameterDictionary &parameters,
+        SpectrumType spectrumType, const FileLoc *loc, Allocator alloc);
+
+    std::string ToString() const;
+
+  private:
+    // SpectrumDirectionMixTexture Private Members
+    SpectrumTexture tex1, tex2;
+    Vector3f dir;
 };
 
 // PtexTexture Declarations

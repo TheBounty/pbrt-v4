@@ -96,31 +96,46 @@ static void PlyErrorCallback(p_ply, const char *message) {
     Error("PLY writing error: %s", message);
 }
 
-bool TriangleMesh::WritePLY(const std::string &filename) const {
+bool TriangleMesh::WritePLY(std::string filename) const {
+    if (s)
+        Warning(R"(%s: PLY mesh will be missing tangent vectors "S".)", filename);
+
+    return pbrt::WritePLY(
+        filename, pstd::span<const int>(vertexIndices, 3 * nTriangles),
+        pstd::span<const int>(), pstd::span<const Point3f>(p, nVertices),
+        pstd::span<const Normal3f>(n, n ? nVertices : 0),
+        pstd::span<const Point2f>(uv, uv ? nVertices : 0),
+        pstd::span<const int>(faceIndices, faceIndices ? nTriangles : 0));
+}
+
+bool WritePLY(std::string filename, pstd::span<const int> triIndices,
+              pstd::span<const int> quadIndices, pstd::span<const Point3f> p,
+              pstd::span<const Normal3f> n, pstd::span<const Point2f> uv,
+              pstd::span<const int> faceIndices) {
     p_ply plyFile =
         ply_create(filename.c_str(), PLY_DEFAULT, PlyErrorCallback, 0, nullptr);
     if (!plyFile)
         return false;
 
+    int nVertices = p.size();
     ply_add_element(plyFile, "vertex", nVertices);
     ply_add_scalar_property(plyFile, "x", PLY_FLOAT);
     ply_add_scalar_property(plyFile, "y", PLY_FLOAT);
     ply_add_scalar_property(plyFile, "z", PLY_FLOAT);
-    if (n) {
+    if (!n.empty()) {
         ply_add_scalar_property(plyFile, "nx", PLY_FLOAT);
         ply_add_scalar_property(plyFile, "ny", PLY_FLOAT);
         ply_add_scalar_property(plyFile, "nz", PLY_FLOAT);
     }
-    if (uv) {
+    if (!uv.empty()) {
         ply_add_scalar_property(plyFile, "u", PLY_FLOAT);
         ply_add_scalar_property(plyFile, "v", PLY_FLOAT);
     }
-    if (s)
-        Warning(R"(%s: PLY mesh will be missing tangent vectors "S".)", filename);
 
-    ply_add_element(plyFile, "face", nTriangles);
+    int nTriangles = triIndices.size() / 3, nQuads = quadIndices.size() / 4;
+    ply_add_element(plyFile, "face", nTriangles + nQuads);
     ply_add_list_property(plyFile, "vertex_indices", PLY_UINT8, PLY_INT);
-    if (faceIndices)
+    if (!faceIndices.empty())
         ply_add_scalar_property(plyFile, "face_indices", PLY_INT);
 
     ply_write_header(plyFile);
@@ -129,12 +144,12 @@ bool TriangleMesh::WritePLY(const std::string &filename) const {
         ply_write(plyFile, p[i].x);
         ply_write(plyFile, p[i].y);
         ply_write(plyFile, p[i].z);
-        if (n) {
+        if (!n.empty()) {
             ply_write(plyFile, n[i].x);
             ply_write(plyFile, n[i].y);
             ply_write(plyFile, n[i].z);
         }
-        if (uv) {
+        if (!uv.empty()) {
             ply_write(plyFile, uv[i].x);
             ply_write(plyFile, uv[i].y);
         }
@@ -142,10 +157,19 @@ bool TriangleMesh::WritePLY(const std::string &filename) const {
 
     for (int i = 0; i < nTriangles; ++i) {
         ply_write(plyFile, 3);
-        ply_write(plyFile, vertexIndices[3 * i]);
-        ply_write(plyFile, vertexIndices[3 * i + 1]);
-        ply_write(plyFile, vertexIndices[3 * i + 2]);
-        if (faceIndices)
+        ply_write(plyFile, triIndices[3 * i]);
+        ply_write(plyFile, triIndices[3 * i + 1]);
+        ply_write(plyFile, triIndices[3 * i + 2]);
+        if (!faceIndices.empty())
+            ply_write(plyFile, faceIndices[i]);
+    }
+    for (int i = 0; i < nQuads; ++i) {
+        ply_write(plyFile, 4);
+        ply_write(plyFile, quadIndices[4 * i]);
+        ply_write(plyFile, quadIndices[4 * i + 1]);
+        ply_write(plyFile, quadIndices[4 * i + 2]);
+        ply_write(plyFile, quadIndices[4 * i + 3]);
+        if (!faceIndices.empty())
             ply_write(plyFile, faceIndices[i]);
     }
 
@@ -416,6 +440,31 @@ void TriQuadMesh::ConvertToOnlyTriangles() {
     }
 
     quadIndices.clear();
+}
+
+void TriQuadMesh::ComputeNormals() {
+    n.resize(p.size());
+    for (size_t i = 0; i < n.size(); ++i)
+        n[i] = Normal3f(0, 0, 0);
+
+    for (size_t i = 0; i < triIndices.size(); i += 3) {
+        int v[3] = {triIndices[i], triIndices[i + 1], triIndices[i + 2]};
+        Vector3f v10 = p[v[1]] - p[v[0]];
+        Vector3f v21 = p[v[2]] - p[v[1]];
+
+        Normal3f vn(Cross(v10, v21));
+        if (LengthSquared(vn) > 0) {
+            vn = Normalize(vn);
+            n[v[0]] += vn;
+            n[v[1]] += vn;
+            n[v[2]] += vn;
+        }
+    }
+    CHECK_EQ(0, quadIndices.size());  // TODO: handle this...
+
+    for (size_t i = 0; i < n.size(); ++i)
+        if (LengthSquared(n[i]) > 0)
+            n[i] = Normalize(n[i]);
 }
 
 std::string TriQuadMesh::ToString() const {
